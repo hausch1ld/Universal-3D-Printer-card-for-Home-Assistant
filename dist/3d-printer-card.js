@@ -187,14 +187,20 @@ class ThreeDPrinterCard extends HTMLElement {
     const state = this._state(entityId);
     if (!state || this._isMissing(state.state)) return fallback;
     const configuredUnit = state.attributes?.unit_of_measurement;
-    const unit = explicitUnit !== undefined ? explicitUnit : configuredUnit;
+    let unit = explicitUnit !== undefined ? explicitUnit : configuredUnit;
     let formattedValue = state.state;
     if (typeof this._hass?.formatEntityState === "function") {
       if (explicitUnit === undefined) {
         const formatted = this._hass.formatEntityState(state);
-        formattedValue = configuredUnit && formatted.endsWith(configuredUnit)
-          ? formatted.slice(0, -configuredUnit.length).trimEnd()
-          : formatted;
+        if (configuredUnit && formatted.endsWith(configuredUnit)) {
+          formattedValue = formatted.slice(0, -configuredUnit.length).trimEnd();
+        } else {
+          // Home Assistant formatted this one itself: a duration in minutes
+          // comes back as "1,247m", a timestamp as a date. The configured unit
+          // is already spoken for, so appending it gives "1,247m min".
+          formattedValue = formatted;
+          unit = "";
+        }
       } else {
         const withoutUnit = { ...state, attributes: { ...state.attributes } };
         delete withoutUnit.attributes.unit_of_measurement;
