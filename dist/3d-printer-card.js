@@ -328,6 +328,17 @@ class ThreeDPrinterCard extends HTMLElement {
         ${!compact && this._section("small_buttons") && smallButtons.length ? `<footer style="--button-count:${smallButtons.length}">${smallButtons.map((button, index) => this._button(button, index)).join("")}</footer>` : ""}
       </ha-card>`;
 
+    // An image entity always publishes an entity_picture, whether or not it
+    // currently has anything to serve -- an integration with no job yet answers
+    // that URL with a 404 or a 500. Nothing here can tell that apart from a
+    // real image in advance, so the failure is caught after the fact rather
+    // than leaving the browser's broken-image icon sitting in the chamber.
+    const modelImage = this.shadowRoot.querySelector(".model-image");
+    if (modelImage) {
+      modelImage.addEventListener("error", () => modelImage.classList.add("unavailable"));
+      modelImage.addEventListener("load", () => modelImage.classList.remove("unavailable"));
+    }
+
     this._updateMedia();
 
     if (this._showCamera && c.camera_entity && !this.shadowRoot.querySelector(".camera-host ha-camera-stream")) {
@@ -604,6 +615,7 @@ class ThreeDPrinterCard extends HTMLElement {
     .printer-scene,.camera-host { display:block; width:100%; height:100%; } .printer-scene { position:relative; } .camera-host{overflow:hidden}.camera-host ha-camera-stream{display:block;width:100%;height:100%;transform:rotate(var(--camera-rotation)) scale(var(--camera-scale-x),var(--camera-scale-y));transform-origin:center center}
     .camera-controls{position:absolute;z-index:4;bottom:10px;left:50%;display:flex;align-items:center;gap:5px;max-width:calc(100% - 120px);padding:5px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(0,0,0,.68);box-shadow:0 3px 12px rgba(0,0,0,.3);backdrop-filter:blur(8px);transform:translateX(-50%)}.camera-controls button{display:grid;flex:0 0 34px;width:34px;height:34px;padding:0;color:#fff;place-items:center;cursor:pointer;background:transparent;border:0;border-radius:8px}.camera-controls button:hover{background:rgba(255,255,255,.14)}.camera-controls ha-icon{width:20px;height:20px}.camera-controls input[type="range"]{width:82px;min-width:48px;height:34px;margin:0;padding:0;accent-color:var(--accent)}.visual-wrap:fullscreen{display:grid;width:100vw;height:100vh;background:#000;place-items:center}.visual-wrap:fullscreen .visual{width:100%;height:100%;max-height:none;border:0;border-radius:0}.visual-wrap:fullscreen .camera-controls{bottom:18px}
     .printer-image { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+    .model-image.unavailable { display:none; }
     .model-image { position:absolute; left:50%; top:var(--model-top); width:var(--model-size); height:var(--model-size); object-fit:contain; transform:translateX(-50%); filter:drop-shadow(0 8px 7px rgba(0,0,0,.5)); }
     .image-placeholder { display:grid; place-content:center; height:100%; gap:8px; color:var(--secondary-text-color); } .image-placeholder ha-icon { width:52px;height:52px;margin:auto; }
     .visual-actions { position:absolute; right:10px; bottom:10px; left:10px; display:flex; justify-content:flex-end; align-items:center; gap:7px; pointer-events:none; } .visual-actions>*{pointer-events:auto}.view-hint { display:grid; flex:0 0 42px; width:42px; height:42px; padding:0; color:inherit; place-items:center; cursor:pointer; border:1px solid rgba(255,255,255,.12); border-radius:12px; background:rgba(0,0,0,.62); backdrop-filter:blur(8px); }
