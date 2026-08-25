@@ -2,7 +2,7 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.8.1";
+const CARD_VERSION = "0.8.2";
 
 const TRANSLATIONS = {
   en: {
