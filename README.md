@@ -181,6 +181,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current build: **0.8.0**
+Current build: **0.8.1**
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.

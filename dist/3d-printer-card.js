@@ -112,7 +112,10 @@ class ThreeDPrinterCard extends HTMLElement {
     if (Array.isArray(this._config?.infos)) return this._config.infos.slice(0, 4).map((info) => ({
       label: info.label,
       entity: info.entity,
-      icon: info.icon
+      icon: info.icon,
+      format: info.format,
+      secondary_entity: info.secondary_entity,
+      separator: info.separator
     }));
     const c = this._config || {};
     const labels = c.detail_labels || {};
@@ -187,14 +190,20 @@ class ThreeDPrinterCard extends HTMLElement {
     const state = this._state(entityId);
     if (!state || this._isMissing(state.state)) return fallback;
     const configuredUnit = state.attributes?.unit_of_measurement;
-    const unit = explicitUnit !== undefined ? explicitUnit : configuredUnit;
+    let unit = explicitUnit !== undefined ? explicitUnit : configuredUnit;
     let formattedValue = state.state;
     if (typeof this._hass?.formatEntityState === "function") {
       if (explicitUnit === undefined) {
         const formatted = this._hass.formatEntityState(state);
-        formattedValue = configuredUnit && formatted.endsWith(configuredUnit)
-          ? formatted.slice(0, -configuredUnit.length).trimEnd()
-          : formatted;
+        if (configuredUnit && formatted.endsWith(configuredUnit)) {
+          formattedValue = formatted.slice(0, -configuredUnit.length).trimEnd();
+        } else {
+          // Home Assistant formatted this one itself: a duration in minutes
+          // comes back as "1,247m", a timestamp as a date. The configured unit
+          // is already spoken for, so appending it gives "1,247m min".
+          formattedValue = formatted;
+          unit = "";
+        }
       } else {
         const withoutUnit = { ...state, attributes: { ...state.attributes } };
         delete withoutUnit.attributes.unit_of_measurement;
@@ -318,6 +327,17 @@ class ThreeDPrinterCard extends HTMLElement {
         ${this._section("large_buttons") && largeButtons.length ? `<section class="metrics" style="--button-count:${largeButtons.length}">${largeButtons.map((button, index) => this._metric(button, index)).join("")}</section>` : ""}
         ${!compact && this._section("small_buttons") && smallButtons.length ? `<footer style="--button-count:${smallButtons.length}">${smallButtons.map((button, index) => this._button(button, index)).join("")}</footer>` : ""}
       </ha-card>`;
+
+    // An image entity always publishes an entity_picture, whether or not it
+    // currently has anything to serve -- an integration with no job yet answers
+    // that URL with a 404 or a 500. Nothing here can tell that apart from a
+    // real image in advance, so the failure is caught after the fact rather
+    // than leaving the browser's broken-image icon sitting in the chamber.
+    const modelImage = this.shadowRoot.querySelector(".model-image");
+    if (modelImage) {
+      modelImage.addEventListener("error", () => modelImage.classList.add("unavailable"));
+      modelImage.addEventListener("load", () => modelImage.classList.remove("unavailable"));
+    }
 
     this._updateMedia();
 
@@ -595,15 +615,16 @@ class ThreeDPrinterCard extends HTMLElement {
     .printer-scene,.camera-host { display:block; width:100%; height:100%; } .printer-scene { position:relative; } .camera-host{overflow:hidden}.camera-host ha-camera-stream{display:block;width:100%;height:100%;transform:rotate(var(--camera-rotation)) scale(var(--camera-scale-x),var(--camera-scale-y));transform-origin:center center}
     .camera-controls{position:absolute;z-index:4;bottom:10px;left:50%;display:flex;align-items:center;gap:5px;max-width:calc(100% - 120px);padding:5px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(0,0,0,.68);box-shadow:0 3px 12px rgba(0,0,0,.3);backdrop-filter:blur(8px);transform:translateX(-50%)}.camera-controls button{display:grid;flex:0 0 34px;width:34px;height:34px;padding:0;color:#fff;place-items:center;cursor:pointer;background:transparent;border:0;border-radius:8px}.camera-controls button:hover{background:rgba(255,255,255,.14)}.camera-controls ha-icon{width:20px;height:20px}.camera-controls input[type="range"]{width:82px;min-width:48px;height:34px;margin:0;padding:0;accent-color:var(--accent)}.visual-wrap:fullscreen{display:grid;width:100vw;height:100vh;background:#000;place-items:center}.visual-wrap:fullscreen .visual{width:100%;height:100%;max-height:none;border:0;border-radius:0}.visual-wrap:fullscreen .camera-controls{bottom:18px}
     .printer-image { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+    .model-image.unavailable { display:none; }
     .model-image { position:absolute; left:50%; top:var(--model-top); width:var(--model-size); height:var(--model-size); object-fit:contain; transform:translateX(-50%); filter:drop-shadow(0 8px 7px rgba(0,0,0,.5)); }
     .image-placeholder { display:grid; place-content:center; height:100%; gap:8px; color:var(--secondary-text-color); } .image-placeholder ha-icon { width:52px;height:52px;margin:auto; }
     .visual-actions { position:absolute; right:10px; bottom:10px; left:10px; display:flex; justify-content:flex-end; align-items:center; gap:7px; pointer-events:none; } .visual-actions>*{pointer-events:auto}.view-hint { display:grid; flex:0 0 42px; width:42px; height:42px; padding:0; color:inherit; place-items:center; cursor:pointer; border:1px solid rgba(255,255,255,.12); border-radius:12px; background:rgba(0,0,0,.62); backdrop-filter:blur(8px); }
     .job { padding:18px 2px 14px; } .job-line { display:flex; justify-content:space-between; gap:12px; margin-bottom:9px; } .job-line strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .job-line b { color:var(--accent); }
-    .progress { height:8px; overflow:hidden; background:rgba(255,255,255,.1); border-radius:999px; } .progress i { display:block; height:100%; background:linear-gradient(90deg,var(--progress-color),color-mix(in srgb,var(--progress-color) 65%,white)); border-radius:inherit; transition:width .35s ease; }
+    .progress { height:8px; overflow:hidden; background:rgba(127,127,127,.16); border-radius:999px; } .progress i { display:block; height:100%; background:linear-gradient(90deg,var(--progress-color),color-mix(in srgb,var(--progress-color) 65%,white)); border-radius:inherit; transition:width .35s ease; }
     .details { display:grid; grid-template-columns:repeat(var(--info-count),minmax(0,1fr)); justify-content:center; gap:10px; max-width:calc(var(--info-count) * 25%); margin:14px auto 0; text-align:center; } .info-entry { display:flex; min-width:0; padding:0; align-items:center; justify-content:center; flex-direction:column; gap:4px; cursor:pointer; color:inherit; font:inherit; background:none; border:0; } .info-icon{width:18px;height:18px;color:var(--secondary-text-color)}.info-copy{display:block;min-width:0}.details .info-copy>span,.target { display:block; overflow:hidden; color:var(--secondary-text-color); font-size:10px; text-overflow:ellipsis; text-transform:uppercase; white-space:nowrap; } .details strong { display:block; margin-top:3px; font-size:13px; }.infos-horizontal .info-entry{flex-direction:row;gap:7px}.infos-text-only .info-icon{display:none}
     .metrics { display:grid; grid-template-columns:repeat(var(--button-count),1fr); gap:8px; padding:14px 0; border-top:1px solid rgba(255,255,255,.08); }
     .metric { min-width:0; padding:11px; text-align:center; color:inherit; font:inherit; background:rgba(127,127,127,.09); border:1px solid transparent; border-radius:12px; } .metric[data-target-entity] { cursor:pointer; } .metric[data-target-entity]:hover { background:color-mix(in srgb,var(--accent) 12%,rgba(127,127,127,.09)); border-color:color-mix(in srgb,var(--accent) 25%,transparent); } .metric-main{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px}.metric-icon{width:21px;height:21px;color:var(--secondary-text-color)}.metric-copy{display:block;min-width:0}.metric-label{display:block;overflow:hidden;color:var(--secondary-text-color);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.metric-value { margin:3px 0; font-size:20px; font-weight:700; } .unit { font-size:.65em;color:var(--secondary-text-color); } .target { text-transform:none; } .missing { opacity:.65; }.large-buttons-horizontal .metric-main{flex-direction:row;gap:8px}.large-buttons-text-only .metric-icon{display:none}
-    footer { display:grid; grid-template-columns:repeat(var(--button-count),1fr); gap:8px; padding-top:3px; } .action { display:flex; min-width:0; min-height:48px; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; color:var(--primary-text-color); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.06); border-radius:12px; } .action:hover { background:color-mix(in srgb,var(--accent) 16%,rgba(255,255,255,.06)); } .action ha-icon { width:21px;height:21px; } .action span { overflow:hidden; max-width:100%; font-size:10px; text-overflow:ellipsis; } .normal.small-buttons-horizontal .action{flex-direction:row;gap:7px}.normal.small-buttons-text-only .action ha-icon{display:none}
+    footer { display:grid; grid-template-columns:repeat(var(--button-count),1fr); gap:8px; padding-top:3px; } .action { display:flex; min-width:0; min-height:48px; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; color:var(--primary-text-color); background:rgba(127,127,127,.09); border:1px solid rgba(255,255,255,.06); border-radius:12px; } .action:hover { background:color-mix(in srgb,var(--accent) 16%,rgba(255,255,255,.06)); } .action ha-icon { width:21px;height:21px; } .action span { overflow:hidden; max-width:100%; font-size:10px; text-overflow:ellipsis; } .normal.small-buttons-horizontal .action{flex-direction:row;gap:7px}.normal.small-buttons-text-only .action ha-icon{display:none}
     .compact .visual{height:calc(var(--printer-height) * .7)}.compact .ace-compact{position:absolute;z-index:2;top:50%;left:10px;width:48px;min-height:0;margin:0;padding:0;overflow:visible;transform:translateY(-50%);background:none;border:0}.compact .ace-compact .spools{display:flex;max-width:none;margin:0;flex-direction:column;gap:6px}.compact .ace-compact .spool{display:grid;width:48px;min-height:42px;padding:6px 2px 3px;place-items:center;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(0,0,0,.62);backdrop-filter:blur(8px)}.compact .ace-compact .spool img,.compact .ace-compact .spool>span{width:25px;height:25px}.compact .ace-compact .spool small{max-width:43px;margin-top:1px;color:#ddd;font-size:7px}.compact .visual-actions{top:50%;right:10px;bottom:auto;left:auto;flex-direction:column;justify-content:center;gap:6px;transform:translateY(-50%)}.compact .visual-actions .action,.compact .view-hint{flex:0 0 42px;width:42px;min-width:42px;min-height:42px;height:42px;padding:0;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(0,0,0,.62);backdrop-filter:blur(8px)}.compact .visual-actions .action ha-icon,.compact .view-hint ha-icon{width:21px;height:21px}.compact .visual-actions .action span{display:none}.compact .metric{padding:8px 10px}.compact .metric-value{font-size:20px}.compact .target{margin-top:4px}
     .compact .ace-compact.five-spools{width:44px}.compact .ace-compact.five-spools .spools{gap:4px}.compact .ace-compact.five-spools .spool{width:44px;min-height:36px;padding:4px 2px 2px}.compact .ace-compact.five-spools .spool img,.compact .ace-compact.five-spools .spool>span{width:21px;height:21px}.compact .ace-compact.five-spools .spool small{max-width:39px;font-size:6px}
     @media(max-width:460px){ ha-card{padding:13px}.spools{gap:5px;grid-template-columns:repeat(var(--spool-count),minmax(0,54px))}.normal .spool img,.normal .spool>span{width:48px;height:48px}.metric{padding:9px 5px}.metric-value{font-size:17px}.metrics{grid-template-columns:repeat(2,1fr)}.camera-controls{max-width:calc(100% - 76px)}.camera-controls input[type="range"]{width:58px} }
@@ -641,13 +662,13 @@ class ThreeDPrinterCardEditor extends HTMLElement {
     if (!Array.isArray(this._config.infos)) {
       const labels = this._config.detail_labels || {};
       const infos = [];
-      if (this._config.layer_current_entity) infos.push({ label: labels.layer || "Layer", entity: this._config.layer_current_entity });
-      if (this._config.elapsed_time_entity) infos.push({ label: labels.elapsed || "Elapsed", entity: this._config.elapsed_time_entity });
-      if (this._config.remaining_time_entity) infos.push({ label: labels.remaining || "Remaining", entity: this._config.remaining_time_entity });
-      if (this._config.estimated_end_entity || this._config.total_time_entity) infos.push({ label: labels.estimated_end || "Estimated end", entity: this._config.estimated_end_entity || this._config.total_time_entity });
+      if (this._config.layer_current_entity) infos.push({ label: labels.layer || "Layer", entity: this._config.layer_current_entity, secondary_entity: this._config.layer_total_entity, separator: " / " });
+      if (this._config.elapsed_time_entity) infos.push({ label: labels.elapsed || "Elapsed", entity: this._config.elapsed_time_entity, format: "time" });
+      if (this._config.remaining_time_entity) infos.push({ label: labels.remaining || "Remaining", entity: this._config.remaining_time_entity, format: "time" });
+      if (this._config.estimated_end_entity || this._config.total_time_entity) infos.push({ label: labels.estimated_end || "Estimated end", entity: this._config.estimated_end_entity || this._config.total_time_entity, format: "end" });
       if (infos.length) this._config.infos = infos.slice(0, 4);
     }
-    if (Array.isArray(this._config.infos)) this._config.infos = this._config.infos.slice(0, 4).map((info) => ({ label: info.label, entity: info.entity, icon: info.icon }));
+    if (Array.isArray(this._config.infos)) this._config.infos = this._config.infos.slice(0, 4).map((info) => ({ label: info.label, entity: info.entity, icon: info.icon, format: info.format, secondary_entity: info.secondary_entity, separator: info.separator }));
     this._render();
   }
 
