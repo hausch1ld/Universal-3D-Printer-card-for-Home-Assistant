@@ -2,7 +2,7 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.8.2";
+const CARD_VERSION = "0.8.3";
 
 const TRANSLATIONS = {
   en: {
@@ -64,7 +64,7 @@ class ThreeDPrinterCard extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("3d-printer-card: configuration is required");
     this._config = config;
-    this._showCamera = config.default_view === "camera";
+    this._showCamera = config.default_view === "camera" || (config.camera_entity && !this._hasPrinterView(config));
     this._render();
   }
 
@@ -85,6 +85,15 @@ class ThreeDPrinterCard extends HTMLElement {
 
   _section(name) {
     return this._config?.sections?.[name] !== false;
+  }
+
+  _hasPrinterView(config = this._config) {
+    return [config?.printer_image, config?.model_image_entity, config?.model_image]
+      .some((value) => String(value || "").trim());
+  }
+
+  _canToggleView() {
+    return Boolean(this._config?.camera_entity && this._hasPrinterView());
   }
 
   _largeButtons() {
@@ -311,6 +320,9 @@ class ThreeDPrinterCard extends HTMLElement {
     const cameraScaleX = cameraZoom * (c.camera_mirror === "horizontal" ? -1 : 1);
     const cameraScaleY = cameraZoom * (c.camera_mirror === "vertical" ? -1 : 1);
     const cameraControls = ["adaptive", "disabled"].includes(c.camera_controls) ? c.camera_controls : "native";
+    const canToggleView = this._canToggleView();
+    const visualTag = canToggleView ? "button" : "div";
+    const visualToggleAttributes = canToggleView ? `data-toggle-view aria-label="${this._escape(this._t("toggle_camera"))}"` : "";
     const smallButtonLayout = ["horizontal", "text-only"].includes(c.small_button_layout) ? c.small_button_layout : "vertical";
     const largeButtonLayout = ["horizontal", "text-only"].includes(c.large_button_layout) ? c.large_button_layout : "vertical";
     const infoLayout = ["horizontal", "text-only"].includes(c.info_layout) ? c.info_layout : "vertical";
@@ -318,7 +330,7 @@ class ThreeDPrinterCard extends HTMLElement {
       <ha-card class="${compact ? "compact" : "normal"} ${c.printer_use_gradient !== false ? "printer-gradient" : ""} small-buttons-${smallButtonLayout} large-buttons-${largeButtonLayout} infos-${infoLayout}" style="--printer-height:${printerHeight}px;--printer-color:${this._escape(c.printer_background_color || "#101113")};--model-size:${modelScale}%;--model-top:${modelTop}%;--camera-rotation:${cameraRotation}deg;--camera-scale-x:${cameraScaleX};--camera-scale-y:${cameraScaleY};--progress-color:${this._escape(c.progress_color || "var(--accent)")}">
         ${this._section("header") ? `<header><div><h2>${this._escape(c.name || "3D Printer")}</h2>${c.subtitle ? `<p>${this._escape(c.subtitle)}</p>` : ""}</div><button type="button" class="status" data-status ${c.status_entity ? `data-more-info="${this._escape(c.status_entity)}"` : ""} ${status ? "" : "hidden"}>${this._escape(status)}</button></header>` : ""}
         ${!compact && this._section("multi_filament") ? this._spools() : ""}
-        ${this._section("printer") ? `<div class="visual-wrap"><button class="visual" data-view="${this._showCamera ? "camera" : "printer"}" data-toggle-view aria-label="${this._escape(this._t("toggle_camera"))}">${this._visual()}</button>${this._showCamera && cameraControls === "adaptive" ? this._adaptiveCameraControls() : ""}${compact && this._section("multi_filament") ? this._spools(true) : ""}<div class="visual-actions">${compact && this._section("small_buttons") ? smallButtons.slice(0, 4).map((button, index) => this._button(button, index)).join("") : ""}<button class="view-hint" data-toggle-view type="button" title="${this._escape(this._t("toggle_camera"))}"><ha-icon icon="${this._showCamera ? "mdi:printer-3d" : "mdi:cctv"}"></ha-icon></button></div></div>` : ""}
+        ${this._section("printer") ? `<div class="visual-wrap"><${visualTag} class="visual" data-view="${this._showCamera ? "camera" : "printer"}" ${visualToggleAttributes}>${this._visual()}</${visualTag}>${this._showCamera && cameraControls === "adaptive" ? this._adaptiveCameraControls() : ""}${compact && this._section("multi_filament") ? this._spools(true) : ""}<div class="visual-actions">${compact && this._section("small_buttons") ? smallButtons.slice(0, 4).map((button, index) => this._button(button, index)).join("") : ""}${canToggleView ? `<button class="view-hint" data-toggle-view type="button" title="${this._escape(this._t("toggle_camera"))}"><ha-icon icon="${this._showCamera ? "mdi:printer-3d" : "mdi:cctv"}"></ha-icon></button>` : ""}</div></div>` : ""}
         ${this._section("progress") ? `<section class="job">
           <div class="job-line"><strong data-filename>${this._escape(name)}</strong><b data-progress-label>${Math.round(progress)}%</b></div>
           <div class="progress" data-progress role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"><i style="width:${progress}%"></i></div>
@@ -511,7 +523,7 @@ class ThreeDPrinterCard extends HTMLElement {
     }
     const toggle = event.target.closest("[data-toggle-view]");
     if (toggle) {
-      if (!this._config.camera_entity) return;
+      if (!this._canToggleView()) return;
       this._showCamera = !this._showCamera;
       this._render();
       return;
@@ -610,7 +622,7 @@ class ThreeDPrinterCard extends HTMLElement {
     .spool { min-width:0; text-align:center; } .spool img,.spool>span { display:block; width:58px; height:58px; max-width:100%; margin:auto; border-radius:50%; object-fit:contain; filter:drop-shadow(0 5px 6px rgba(0,0,0,.3)); }
     .spool>span { display:grid; place-items:center; border:5px solid rgba(255,255,255,.16); color:var(--secondary-text-color); }
     .spool small { display:block; overflow:hidden; margin-top:3px; color:var(--secondary-text-color); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-    .visual-wrap { position:relative; } .visual { position:relative; display:block; width:100%; height:var(--printer-height); max-height:70vh; margin:0; padding:0; overflow:hidden; cursor:pointer; color:inherit; background:var(--printer-color); border:1px solid rgba(255,255,255,.08); border-radius:16px; }
+    .visual-wrap { position:relative; } .visual { position:relative; display:block; width:100%; height:var(--printer-height); max-height:70vh; margin:0; padding:0; overflow:hidden; cursor:pointer; color:inherit; background:var(--printer-color); border:1px solid rgba(255,255,255,.08); border-radius:16px; } .visual:not([data-toggle-view]) { cursor:default; }
     .printer-gradient .visual { background:radial-gradient(circle at 50% 55%,rgba(255,255,255,.08),transparent 55%),var(--printer-color); }
     .printer-scene,.camera-host { display:block; width:100%; height:100%; } .printer-scene { position:relative; } .camera-host{overflow:hidden}.camera-host ha-camera-stream{display:block;width:100%;height:100%;transform:rotate(var(--camera-rotation)) scale(var(--camera-scale-x),var(--camera-scale-y));transform-origin:center center}
     .camera-controls{position:absolute;z-index:4;bottom:10px;left:50%;display:flex;align-items:center;gap:5px;max-width:calc(100% - 120px);padding:5px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(0,0,0,.68);box-shadow:0 3px 12px rgba(0,0,0,.3);backdrop-filter:blur(8px);transform:translateX(-50%)}.camera-controls button{display:grid;flex:0 0 34px;width:34px;height:34px;padding:0;color:#fff;place-items:center;cursor:pointer;background:transparent;border:0;border-radius:8px}.camera-controls button:hover{background:rgba(255,255,255,.14)}.camera-controls ha-icon{width:20px;height:20px}.camera-controls input[type="range"]{width:82px;min-width:48px;height:34px;margin:0;padding:0;accent-color:var(--accent)}.visual-wrap:fullscreen{display:grid;width:100vw;height:100vh;background:#000;place-items:center}.visual-wrap:fullscreen .visual{width:100%;height:100%;max-height:none;border:0;border-radius:0}.visual-wrap:fullscreen .camera-controls{bottom:18px}
