@@ -1,0 +1,99 @@
+type: custom:three-d-printer-card
+name: My 3D Printer
+schema_version: 1
+sections:
+  header: true
+status_entity: sensor.printer_status
+widgets:
+  - id: filaments-first
+    type: filaments
+    enabled: true
+    config:
+      label: Filaments 1–5
+      use_gradient: true
+      spools:
+        - entity: sensor.spool_1
+        - entity: sensor.spool_2
+        - entity: sensor.spool_3
+        - entity: sensor.spool_4
+        - entity: sensor.spool_5
+  - id: filaments-second
+    type: filaments
+    enabled: true
+    config:
+      label: Filaments 6–10
+      spools:
+        - entity: sensor.spool_6
+        - entity: sensor.spool_7
+        - entity: sensor.spool_8
+        - entity: sensor.spool_9
+        - entity: sensor.spool_10
+  - id: printer-main
+    type: printer
+    enabled: true
+    config:
+      design: compact
+      printer_height: 400
+      printer_image: /local/printer.png
+      printer_use_gradient: true
+      model_image_entity: image.printer_model
+      model_size: 40
+      model_position: 70
+      model_use_effect: true
+      model_progress_entity: sensor.printer_progress
+      camera_entity: camera.printer
+      default_view: printer
+      camera_rotation: 0
+      camera_zoom: 100
+      camera_mirror: none
+      camera_controls: adaptive
+      show_filaments: false
+      show_controls: true
+      controls:
+        - entity: button.printer_pause
+          icon: mdi:pause
+        - entity: button.printer_resume
+          icon: mdi:play
+        - entity: button.printer_stop
+          icon: mdi:stop
+        - entity: light.printer
+          icon: mdi:lightbulb
+  - id: progress-main
+    type: progress
+    enabled: true
+    config:
+      filename_entity: sensor.printer_filename
+      progress_entity: sensor.printer_progress
+  - id: info-main
+    type: infos
+    enabled: true
+    config:
+      layout: vertical
+      items:
+        - entity: sensor.printer_layer
+          label: Layer
+          icon: mdi:layers
+        - entity: sensor.printer_remaining
+          label: Remaining
+  - id: temperatures
+    type: buttons
+    enabled: true
+    config:
+      style: large
+      layout: horizontal
+      buttons:
+        - label: Nozzle
+          icon: mdi:printer-3d-nozzle-heat
+          entity: sensor.printer_nozzle_temperature
+          secondary_entity: number.printer_nozzle_temperature
+        - label: Bed
+          icon: mdi:radiator
+          entity: sensor.printer_bed_temperature
+          secondary_entity: number.printer_bed_temperature
+  - id: speed-slider
+    type: slider
+    enabled: true
+    config:
+      label: Print speed
+      icon: mdi:speedometer
+      entity: number.printer_speed

@@ -2,10 +2,10 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.8.3";
+const CARD_VERSION = "0.9.0-beta.1";
 
-// Migration is deliberately independent of hass and never writes back to the
-// dashboard. The row renderer/editor will consume this model in the next step.
+// Migration is independent of hass and never writes back to the dashboard.
+// Both the renderer and editor consume this model.
 function createWidgetConfig(source) {
   const config = JSON.parse(JSON.stringify(source || {}));
   // An explicit empty list means "no widgets", not "restore legacy widgets".
@@ -73,7 +73,7 @@ function createWidgetConfig(source) {
   add("legacy-printer", "printer", enabled("printer"), printer);
   add("legacy-progress", "progress", enabled("progress"), pick(["filename_entity", "progress_entity", "progress_color"]));
   chunks(infos, 4).forEach((items, index) => add(`legacy-infos-${index + 1}`, "infos", enabled("progress"), { layout: config.info_layout || "vertical", items }));
-  chunks(metrics, 4).forEach((buttons, index) => add(`legacy-large-buttons-${index + 1}`, "buttons", enabled("large_buttons"), { style: "large", layout: config.large_button_layout || "vertical", buttons }));
+  chunks(metrics, 4).forEach((buttons, index) => add(`legacy-large-buttons-${index + 1}`, "buttons", enabled("large_buttons"), { style: "large", design: config.design || "normal", layout: config.large_button_layout || "vertical", buttons }));
   const standaloneControls = compact ? controls.slice(5) : controls;
   chunks(standaloneControls, 5).forEach((buttons, index) => add(`legacy-controls-${index + 1}`, "buttons", enabled("small_buttons"), { style: "small", layout: config.small_button_layout || "vertical", buttons }));
 
@@ -352,7 +352,7 @@ class ThreeDPrinterCard extends HTMLElement {
   _visual() {
     if (this._showCamera && this._config.camera_entity) return '<div class="camera-host" data-camera-host></div>';
     const printer = this._image(this._config.printer_image);
-    const model = this._image(this._config.model_image_entity) || this._image(this._config.model_image);
+    const model = this._entityImage(this._config.model_image_entity) || this._image(this._config.model_image);
     return `<div class="printer-scene" data-view="printer">
       ${printer ? `<img class="printer-image" src="${this._escape(printer)}" alt="">` : `<div class="image-placeholder"><ha-icon icon="mdi:printer-3d"></ha-icon></div>`}
       ${model ? `<img class="model-image" src="${this._escape(model)}" alt="">` : ""}
@@ -371,10 +371,11 @@ class ThreeDPrinterCard extends HTMLElement {
   _button(cfg, index) {
     if (!cfg) return "";
     const state = this._state(cfg.entity);
-    const label = cfg.label || state?.attributes?.friendly_name || `${this._t("small_button")} ${index + 1}`;
-    const icon = cfg.icon || state?.attributes?.icon || "mdi:gesture-tap-button";
-    return `<button class="action" data-small-action="${index}" title="${this._escape(label)}">
-      <ha-icon icon="${this._escape(icon)}"></ha-icon><span>${this._escape(label)}</span>
+    const label = cfg.label ?? state?.attributes?.friendly_name ?? `${this._t("small_button")} ${index + 1}`;
+    const icon = cfg.icon ?? state?.attributes?.icon ?? "mdi:gesture-tap-button";
+    const accessibleLabel = label || state?.attributes?.friendly_name || `${this._t("small_button")} ${index + 1}`;
+    return `<button type="button" class="action" data-small-action="${index}" title="${this._escape(accessibleLabel)}" aria-label="${this._escape(accessibleLabel)}">
+      ${icon ? `<ha-icon icon="${this._escape(icon)}"></ha-icon>` : ""}${label ? `<span>${this._escape(label)}</span>` : ""}
     </button>`;
   }
 
@@ -409,10 +410,10 @@ class ThreeDPrinterCard extends HTMLElement {
       <ha-card class="${compact ? "compact" : "normal"} ${c.printer_use_gradient !== false ? "printer-gradient" : ""} small-buttons-${smallButtonLayout} large-buttons-${largeButtonLayout} infos-${infoLayout}" style="--printer-height:${printerHeight}px;--printer-color:${this._escape(c.printer_background_color || "#101113")};--model-size:${modelScale}%;--model-top:${modelTop}%;--camera-rotation:${cameraRotation}deg;--camera-scale-x:${cameraScaleX};--camera-scale-y:${cameraScaleY};--progress-color:${this._escape(c.progress_color || "var(--accent)")}">
         ${this._section("header") ? `<header><div><h2>${this._escape(c.name || "3D Printer")}</h2>${c.subtitle ? `<p>${this._escape(c.subtitle)}</p>` : ""}</div><button type="button" class="status" data-status ${c.status_entity ? `data-more-info="${this._escape(c.status_entity)}"` : ""} ${status ? "" : "hidden"}>${this._escape(status)}</button></header>` : ""}
         ${!compact && this._section("multi_filament") ? this._spools() : ""}
-        ${this._section("printer") ? `<div class="visual-wrap"><${visualTag} class="visual" data-view="${this._showCamera ? "camera" : "printer"}" ${visualToggleAttributes}>${this._visual()}</${visualTag}>${this._showCamera && cameraControls === "adaptive" ? this._adaptiveCameraControls() : ""}${compact && this._section("multi_filament") ? this._spools(true) : ""}<div class="visual-actions">${compact && this._section("small_buttons") ? smallButtons.slice(0, 4).map((button, index) => this._button(button, index)).join("") : ""}${canToggleView ? `<button class="view-hint" data-toggle-view type="button" title="${this._escape(this._t("toggle_camera"))}"><ha-icon icon="${this._showCamera ? "mdi:printer-3d" : "mdi:cctv"}"></ha-icon></button>` : ""}</div></div>` : ""}
+        ${this._section("printer") ? `<div class="visual-wrap"><${visualTag} class="visual" data-view="${this._showCamera ? "camera" : "printer"}" ${visualToggleAttributes}>${this._visual()}</${visualTag}>${this._showCamera && cameraControls === "adaptive" ? this._adaptiveCameraControls() : ""}${compact && this._section("multi_filament") ? this._spools(true) : ""}<div class="visual-actions">${compact && this._section("small_buttons") ? smallButtons.slice(0, 5).map((button, index) => this._button(button, index)).join("") : ""}${canToggleView ? `<button class="view-hint" data-toggle-view type="button" title="${this._escape(this._t("toggle_camera"))}"><ha-icon icon="${this._showCamera ? "mdi:printer-3d" : "mdi:cctv"}"></ha-icon></button>` : ""}</div></div>` : ""}
         ${this._section("progress") ? `<section class="job">
-          <div class="job-line"><strong data-filename>${this._escape(name)}</strong><b data-progress-label>${Math.round(progress)}%</b></div>
-          <div class="progress" data-progress role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"><i style="width:${progress}%"></i></div>
+          ${this._section("progress_bar") ? `<div class="job-line"><strong data-filename>${this._escape(name)}</strong><b data-progress-label>${Math.round(progress)}%</b></div>
+          <div class="progress" data-progress role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"><i style="width:${progress}%"></i></div>` : ""}
           ${infos.length ? `<div class="details" style="--info-count:${infos.length}">${infos.map((info, index) => { const infoIcon = String(info.icon || "").trim(); return `<button type="button" class="info-entry" ${info.entity ? `data-more-info="${this._escape(info.entity)}"` : ""}>${infoIcon ? `<ha-icon class="info-icon" icon="${this._escape(infoIcon)}"></ha-icon>` : ""}<span class="info-copy"><span>${this._escape(info.label || this._state(info.entity)?.attributes?.friendly_name || `${this._t("info")} ${index + 1}`)}</span><strong data-info="${index}">${this._infoValue(info)}</strong></span></button>`; }).join("")}</div>` : ""}
         </section>` : ""}
         ${this._section("large_buttons") && largeButtons.length ? `<section class="metrics" style="--button-count:${largeButtons.length}">${largeButtons.map((button, index) => this._metric(button, index)).join("")}</section>` : ""}
@@ -556,7 +557,7 @@ class ThreeDPrinterCard extends HTMLElement {
       const printer = visual.querySelector(".printer-image");
       const model = visual.querySelector(".model-image");
       const printerSrc = this._image(c.printer_image);
-      const modelSrc = this._image(c.model_image_entity) || this._image(c.model_image);
+      const modelSrc = this._entityImage(c.model_image_entity) || this._image(c.model_image);
       if (printer && printerSrc && printer.getAttribute("src") !== printerSrc) printer.setAttribute("src", printerSrc);
       if (model && modelSrc && model.getAttribute("src") !== modelSrc) model.setAttribute("src", modelSrc);
     }
@@ -1010,10 +1011,504 @@ class ThreeDPrinterCardEditor extends HTMLElement {
   }
 }
 
+Object.assign(TRANSLATIONS.en, {
+  add_widget: "Add Widget", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Enabled", move_up: "Move up", move_down: "Move down", drag: "Drag to reorder", remove_widget: "Remove widget", duplicate: "Duplicate widget",
+  show_filaments: "Show Filaments", show_controls: "Show Controls", use_effect: "Use effect", effect_entity: "Model progress entity (%)", effect_hint: "Reveals the model from bottom to top. Missing progress shows the full model.",
+  slider: "Slider", slider_entity: "Controllable entity", slider_hint: "Select a number or input_number entity. Range and step follow its attributes.", format: "Value format", format_default: "Home Assistant default", format_time: "Duration (h:mm:ss)", format_end: "Date and time", secondary_info: "Second entity (optional)", separator: "Separator", start_view: "Start view", view_printer: "Printer / model", view_camera: "Live camera", style: "Button style", no_widgets: "No widgets yet. Add your first widget above.", unknown_widget: "Unsupported widget type", service_error: "Could not set the value. Please try again.", entity_unavailable: "Entity unavailable", editor_note: "Each widget fills one row. Expand to configure; drag the handle to reorder.", optional: "Optional", legacy_action: "Custom YAML action preserved. Selecting an entity replaces it.",
+});
+Object.assign(TRANSLATIONS.de, {
+  add_widget: "Widget hinzufügen", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Aktiviert", move_up: "Nach oben", move_down: "Nach unten", drag: "Zum Sortieren ziehen", remove_widget: "Widget entfernen", duplicate: "Widget duplizieren",
+  show_filaments: "Filamente anzeigen", show_controls: "Controls anzeigen", use_effect: "Effekt verwenden", effect_entity: "Modell-Fortschrittsentität (%)", effect_hint: "Deckt das Modell von unten nach oben auf. Ohne verfügbaren Fortschritt bleibt das Modell vollständig sichtbar.",
+  slider: "Slider", slider_entity: "Steuerbare Entität", slider_hint: "Wähle eine number- oder input_number-Entität. Grenzen und Schrittweite werden aus der Entität übernommen.", format: "Wertformat", format_default: "Home-Assistant-Standard", format_time: "Dauer (h:mm:ss)", format_end: "Datum und Uhrzeit", secondary_info: "Zweite Entität (optional)", separator: "Trennzeichen", start_view: "Startansicht", view_printer: "Drucker / Modell", view_camera: "Live-Kamera", style: "Button-Stil", no_widgets: "Noch keine Widgets. Füge oben dein erstes Widget hinzu.", unknown_widget: "Unbekannter Widget-Typ", service_error: "Wert konnte nicht gesetzt werden. Bitte erneut versuchen.", entity_unavailable: "Entität nicht verfügbar", editor_note: "Jedes Widget belegt eine Reihe. Zum Konfigurieren aufklappen; am Griff die Reihenfolge ändern.", optional: "Optional", legacy_action: "Eigene YAML-Aktion erhalten. Die Auswahl einer Entität ersetzt sie.",
+});
+
+const WIDGET_TYPES = ["filaments", "printer", "progress", "infos", "buttons", "slider"];
+const WIDGET_LABELS = { filaments: "filaments", printer: "printer", progress: "progress_tab", infos: "infos", buttons: "buttons", slider: "slider" };
+
+// Translate one widget to the proven row renderer. Each instance owns its
+// shadow DOM, camera state and event handlers; repeated types never share IDs.
+function widgetRowConfig(widget) {
+  const c = widget.config || {};
+  const sections = { header: false, multi_filament: false, printer: false, progress: false, large_buttons: false, small_buttons: false };
+  const row = { ...c, _row: true, sections, large_buttons: [], small_buttons: [], infos: [] };
+  if (widget.type === "filaments") { sections.multi_filament = true; row.ace = c; row.design = "normal"; }
+  if (widget.type === "printer") {
+    sections.printer = true;
+    sections.multi_filament = c.show_filaments === true;
+    sections.small_buttons = c.show_controls === true;
+    row.ace = c.filaments || { spools: [] };
+    row.small_buttons = (c.controls || []).slice(0, 5);
+    row.design = "compact"; // overlays are independent of the height setting
+    row._heightCompact = c.design === "compact";
+  }
+  if (widget.type === "progress") { sections.progress = true; }
+  if (widget.type === "infos") { sections.progress = true; sections.progress_bar = false; row.infos = c.items || []; row.info_layout = c.layout; }
+  if (widget.type === "buttons") {
+    if (c.style === "large") { sections.large_buttons = true; row.large_buttons = c.buttons || []; row.large_button_layout = c.layout; }
+    else { sections.small_buttons = true; row.small_buttons = c.buttons || []; row.small_button_layout = c.layout; row.design = "normal"; }
+  }
+  if (widget.type === "slider") row._slider = true;
+  return row;
+}
+
+class ThreeDPrinterWidgetRow extends ThreeDPrinterCard {
+  set hass(hass) {
+    this._hass = hass;
+    if (this.shadowRoot.querySelector("ha-card, [data-entity-slider]")) this._refreshDynamic();
+    else this._render();
+  }
+
+  setConfig(config) {
+    if (JSON.stringify(config) === JSON.stringify(this._config)) return;
+    const previous = this._config;
+    this._config = config;
+    if (previous?.entity !== config.entity) { this._sliderRequested = null; clearTimeout(this._sliderSyncTimer); }
+    if (!previous || previous.camera_entity !== config.camera_entity || previous.default_view !== config.default_view) {
+      this._showCamera = config.default_view === "camera";
+    }
+    if (config.camera_entity && !this._hasPrinterView(config)) this._showCamera = true;
+    if (!config.camera_entity) this._showCamera = false;
+    this._render();
+  }
+
+  _render() {
+    if (!this._config) return;
+    if (this._config._slider) { this._renderSlider(); return; }
+    super._render();
+    const count = (this._section("small_buttons") ? this._smallButtons().slice(0, 5).length : 0) + (this._canToggleView() ? 1 : 0);
+    const requestedHeight = Math.max(160, Number(this._config.printer_height) || 360) * (this._config._heightCompact ? .7 : 1);
+    const height = Math.max(requestedHeight, this._section("multi_filament") ? 170 : 0, count ? count * 24 + Math.max(0, count - 1) * 6 + 20 : 0);
+    const controlSize = Math.max(20, Math.min(42, (height - 28 - Math.max(0, count - 1) * 6) / Math.max(1, count)));
+    const style = document.createElement("style");
+    style.textContent = `ha-card{border:0;border-radius:0;box-shadow:none;padding:0;background:transparent}.ace{margin:0}.job{padding:10px 2px}.details{margin:0 auto}.compact .visual{height:${height}px}.compact .visual-actions .action,.compact .visual-actions .view-hint{flex-basis:${controlSize}px;width:${controlSize}px;min-width:${controlSize}px;height:${controlSize}px;min-height:${controlSize}px}.model-image{transition:clip-path .5s ease}.metrics{padding:10px 0}.compact .visual-wrap:fullscreen .visual{height:100%}.compact .ace-compact .spools{max-height:${height - 12}px;gap:4px}.compact .ace-compact .spool{min-height:0;height:${Math.min(48, (height - 28) / 5)}px;padding:5px 2px 3px}.compact .ace-compact .spool img{height:${Math.min(25, (height - 28) / 5 - 17)}px;width:auto}.compact .visual-wrap{container-type:inline-size}@media(prefers-reduced-motion:reduce){.model-image{transition:none}}`;
+    this.shadowRoot.append(style);
+    style.textContent += ".compact .visual{max-height:none}";
+    this._applyEffect();
+  }
+
+  _applyEffect() {
+    const image = this.shadowRoot.querySelector(".model-image");
+    if (!image) return;
+    const c = this._config;
+    const raw = this._state(c.model_progress_entity)?.state;
+    const progress = !this._isMissing(raw) && Number.isFinite(Number(raw)) ? Math.min(100, Math.max(0, Number(raw))) : 100;
+    image.style.clipPath = c.model_use_effect === true ? `inset(${100 - progress}% 0 0 0)` : "none";
+  }
+
+  _refreshDynamic() {
+    if (this._config?._slider) { this._refreshSlider(); return; }
+    super._refreshDynamic();
+    this._applyEffect();
+    if (this._showCamera && this._config.camera_controls === "adaptive" && this._cameraVideo()) this._setupAdaptiveCameraControls();
+    this._smallButtons().forEach((config, index) => {
+      const button = this.shadowRoot.querySelector(`[data-small-action="${index}"]`);
+      if (!button) return;
+      const state = this._state(config.entity);
+      const label = config.label ?? state?.attributes.friendly_name ?? `${this._t("small_button")} ${index + 1}`;
+      const icon = config.icon ?? state?.attributes.icon ?? "mdi:gesture-tap-button";
+      button.title = button.ariaLabel = label || state?.attributes.friendly_name || `${this._t("small_button")} ${index + 1}`;
+      if (button.querySelector("span")) button.querySelector("span").textContent = label;
+      if (button.querySelector("ha-icon")) button.querySelector("ha-icon").setAttribute("icon", icon);
+    });
+  }
+
+  _updateMedia() {
+    super._updateMedia();
+    // The element must exist before an initially unavailable image becomes ready.
+    const scene = this.shadowRoot.querySelector(".printer-scene");
+    if (scene && !scene.querySelector(".model-image")) {
+      const src = this._entityImage(this._config.model_image_entity) || this._image(this._config.model_image);
+      if (src) {
+        const image = document.createElement("img");
+        image.className = "model-image";
+        image.alt = "";
+        image.addEventListener("error", () => image.classList.add("unavailable"));
+        image.addEventListener("load", () => image.classList.remove("unavailable"));
+        image.src = src;
+        scene.append(image);
+      }
+    }
+    // Spool entities can change from unavailable to a usable picture at runtime.
+    this.shadowRoot.querySelectorAll("[data-spool]").forEach((slot) => {
+      const spool = this._config.ace?.spools?.[Number(slot.dataset.spool)];
+      const src = this._image(spool?.entity || spool?.image_entity) || this._image(spool?.image);
+      if (src && !slot.querySelector("img")) {
+        const image = document.createElement("img"); image.src = src; image.alt = slot.querySelector("small")?.textContent || "";
+        slot.querySelector("span")?.replaceWith(image);
+        slot.classList.remove("empty");
+      }
+    });
+  }
+
+  async _ensureSlider() {
+    if (customElements.get("ha-slider") || this._sliderLoading) return;
+    this._sliderLoading = true;
+    try {
+      const helpers = await window.loadCardHelpers?.();
+      helpers?.createRowElement({ entity: this._config.entity || "input_number.placeholder" });
+      await customElements.whenDefined("ha-slider");
+      if (this.isConnected && this._config?._slider) this._renderSlider();
+    } catch { /* The native range fallback remains usable if HA cannot load it. */ }
+    finally { this._sliderLoading = false; }
+  }
+
+  _renderSlider() {
+    const c = this._config;
+    const native = customElements.get("ha-slider");
+    this.shadowRoot.innerHTML = `<style>:host{display:block;color:var(--primary-text-color)}.slider-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:10px 2px}.copy{min-width:0}.copy span{display:block}.slider{display:block;width:100%;min-height:40px;accent-color:var(--primary-color)}ha-icon{color:var(--state-icon-color,var(--secondary-text-color))}.value{color:var(--secondary-text-color);font-size:13px}.error{color:var(--error-color);font-size:12px}[hidden]{display:none!important}</style><div class="slider-row"><ha-icon data-slider-icon></ha-icon><div class="copy"><span data-slider-label></span>${native ? '<ha-slider class="slider" data-entity-slider labeled></ha-slider>' : '<input class="slider" data-entity-slider type="range">'}<span class="error" role="alert" data-slider-error hidden></span></div><span class="value" data-slider-value></span></div>`;
+    const slider = this.shadowRoot.querySelector("[data-entity-slider]");
+    slider.addEventListener("pointerdown", () => { this._sliderDragging = true; });
+    slider.addEventListener("keydown", () => { this._sliderDragging = true; });
+    slider.addEventListener("pointercancel", () => { this._sliderDragging = false; this._refreshSlider(); });
+    slider.addEventListener("blur", () => { this._sliderDragging = false; this._refreshSlider(); });
+    slider.addEventListener("change", () => this._setSliderValue(slider.value));
+    slider.addEventListener("input", () => {
+      this.shadowRoot.querySelector("[data-slider-value]").textContent = `${slider.value} ${this._state(c.entity)?.attributes.unit_of_measurement || ""}`.trim();
+    });
+    this._refreshSlider();
+    this._ensureSlider();
+  }
+
+  _refreshSlider() {
+    const slider = this.shadowRoot.querySelector("[data-entity-slider]");
+    if (!slider) return;
+    const c = this._config, state = this._state(c.entity);
+    const valid = ["number", "input_number"].includes(c.entity?.split(".")[0]);
+    const unavailable = !valid || !state || this._isMissing(state.state) || !Number.isFinite(Number(state.state));
+    if (this._sliderRequested != null && Number(state?.state) === this._sliderRequested) this._sliderRequested = null;
+    slider.disabled = unavailable || this._sliderPending === true;
+    slider.min = Number(state?.attributes.min ?? 0);
+    slider.max = Number(state?.attributes.max ?? 100);
+    slider.step = Number(state?.attributes.step ?? 1);
+    if (!this._sliderDragging && !this._sliderPending) slider.value = unavailable ? slider.min : this._sliderRequested ?? Number(state.state);
+    this.shadowRoot.querySelector("[data-slider-label]").textContent = c.label || state?.attributes.friendly_name || this._t("slider");
+    slider.setAttribute("aria-label", c.label || state?.attributes.friendly_name || this._t("slider"));
+    const icon = this.shadowRoot.querySelector("[data-slider-icon]");
+    icon.setAttribute("icon", c.icon ?? state?.attributes.icon ?? "mdi:tune");
+    icon.hidden = c.icon === "";
+    if (!this._sliderDragging && !this._sliderPending) this.shadowRoot.querySelector("[data-slider-value]").textContent = unavailable ? "—" : this._sliderRequested != null ? `${this._sliderRequested} ${state.attributes.unit_of_measurement || ""}`.trim() : (this._hass?.formatEntityState?.(state) ?? state.state);
+  }
+
+  async _setSliderValue(raw) {
+    this._sliderDragging = false;
+    const c = this._config, state = this._state(c.entity);
+    if (this._sliderPending || !state || this._isMissing(state.state) || !["number", "input_number"].includes(c.entity?.split(".")[0]) || !Number.isFinite(Number(raw))) return;
+    const min = Number(state.attributes.min ?? 0), max = Number(state.attributes.max ?? 100), step = Number(state.attributes.step ?? 1);
+    const value = Number(Math.min(max, Math.max(min, min + Math.round((Number(raw) - min) / (step > 0 ? step : 1)) * (step > 0 ? step : 1))).toFixed(8));
+    const error = this.shadowRoot.querySelector("[data-slider-error]");
+    error.hidden = true;
+    this._sliderPending = true;
+    this._sliderRequested = value;
+    this._refreshSlider();
+    try { await this._hass.callService(c.entity.split(".")[0], "set_value", { entity_id: c.entity, value }); }
+    catch { this._sliderRequested = null; error.hidden = false; error.textContent = this._t("service_error"); }
+    finally {
+      this._sliderPending = false;
+      this._refreshSlider();
+      clearTimeout(this._sliderSyncTimer);
+      this._sliderSyncTimer = setTimeout(() => { this._sliderRequested = null; if (this.isConnected) this._refreshSlider(); }, 3000);
+    }
+  }
+
+  disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this._sliderSyncTimer); }
+}
+
+class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
+  constructor() {
+    super();
+    this._openRows = new Set(["general"]);
+    this._pointerDown = (event) => this._startDrag(event);
+    this._pointerMove = (event) => this._dragMove(event);
+    this._pointerUp = () => this._finishDrag();
+  }
+
+  setConfig(config) {
+    const next = createWidgetConfig(config);
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return;
+    this._config = next;
+    this._render();
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.shadowRoot.addEventListener("pointerdown", this._pointerDown);
+    this.shadowRoot.addEventListener("pointermove", this._pointerMove);
+    this.shadowRoot.addEventListener("pointerup", this._pointerUp);
+    this.shadowRoot.addEventListener("pointercancel", this._pointerUp);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.shadowRoot.removeEventListener("pointerdown", this._pointerDown);
+    this.shadowRoot.removeEventListener("pointermove", this._pointerMove);
+    this.shadowRoot.removeEventListener("pointerup", this._pointerUp);
+    this.shadowRoot.removeEventListener("pointercancel", this._pointerUp);
+    this._drag = null;
+  }
+
+  _commit(next, render = false) {
+    this._config = next;
+    this.dispatchEvent(new CustomEvent("config-changed", { bubbles: true, composed: true, detail: { config: next } }));
+    if (render) this._render();
+  }
+
+  _set(path, value) {
+    const next = JSON.parse(JSON.stringify(this._config));
+    let target = next;
+    path.slice(0, -1).forEach((key, index) => {
+      if (target[key] == null) target[key] = typeof path[index + 1] === "number" ? [] : {};
+      target = target[key];
+    });
+    // Explicit empty icons, labels and entities must survive editing and YAML.
+    target[path.at(-1)] = value ?? "";
+    if (path.at(-1) === "entity" && (path.includes("buttons") || path.includes("controls"))) {
+      for (const key of ["_legacyKey", "tap_action", "action", "service", "perform_action", "navigation_path", "url_path"]) delete target[key];
+    }
+    this._commit(next);
+  }
+
+  _select(label, path, options, fallback) {
+    const value = this._get(path, fallback ?? options[0][0]);
+    return `<label><span>${this._escape(label)}</span><select data-path="${this._path(path)}">${options.map(([key, title]) => `<option value="${this._escape(key)}" ${value === key ? "selected" : ""}>${this._escape(title)}</option>`).join("")}</select></label>`;
+  }
+
+  _colorField(label, path, fallback = "#03a9f4") {
+    return super._colorField(label, path, fallback).replace(/<\/span><input type="color"/, `${this._get(path, "") ? "" : `<button type="button" class="clear" data-clear-path="${this._path(path)}">${this._t("clear")}</button>`}</span><input type="color"`);
+  }
+
+  _list(path, kind, limit) {
+    const items = this._get(path, []);
+    const title = kind === "spool" ? this._t("spool") : kind === "info" ? this._t("info") : this._t("small_button");
+    return `<div class="list">${items.map((item, index) => {
+      const p = [...path, index];
+      let fields = this._input(this._t("label"), [...p, "label"]);
+      if (kind === "spool") fields += this._selector(this._t("spool_entity"), [...p, "entity"], { entity: {} }) + this._imageField(this._t("static_spool_image"), [...p, "image"]);
+      else {
+        fields += this._selector(this._t("icon"), [...p, "icon"], { icon: {} });
+        fields += this._selector(kind === "large" ? this._t("main_value") : kind === "info" ? this._t("info_entity") : this._t("action_entity"), [...p, "entity"], { entity: kind === "small" ? { domain: ["button", "switch", "light"] } : kind === "large" ? { domain: "sensor" } : {} });
+        if (kind === "large") fields += this._input(this._t("main_unit"), [...p, "unit"]) + this._selector(this._t("secondary_entity"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("secondary_label"), [...p, "secondary_label"]) + this._input(this._t("secondary_unit"), [...p, "secondary_unit"]);
+        if (kind === "info") fields += this._select(this._t("format"), [...p, "format"], [["", this._t("format_default")], ["time", this._t("format_time")], ["end", this._t("format_end")]]) + this._selector(this._t("secondary_info"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("separator"), [...p, "separator"]);
+      }
+      return `<div class="item"><div class="item-head"><b>${title} ${index + 1}</b><button type="button" class="icon-button" data-command="remove-item" data-list="${this._path(path)}" data-index="${index}" aria-label="${this._t("remove_button")}"><ha-icon icon="mdi:minus"></ha-icon></button></div>${item._legacyKey ? `<p class="hint">${this._t("legacy_action")}</p>` : ""}<div class="grid">${fields}</div></div>`;
+    }).join("")}${items.length < limit ? `<button type="button" class="add" data-command="add-item" data-kind="${kind}" data-list="${this._path(path)}" data-limit="${limit}"><ha-icon icon="mdi:plus"></ha-icon>${kind === "spool" ? this._t("add_spool") : kind === "info" ? this._t("add_info") : this._t("add_button")}</button>` : ""}</div>`;
+  }
+
+  _widgetFields(widget, index) {
+    const c = widget.config || {}, p = ["widgets", index, "config"];
+    if (widget.type === "filaments") return `<div class="grid">${this._input(this._t("title"), [...p, "label"])}${this._select(this._t("title_alignment"), [...p, "title_alignment"], [["left", this._t("left")], ["center", this._t("center")], ["right", this._t("right")]])}${this._imageField(this._t("background_image"), [...p, "image"])}${this._colorField(this._t("background_color"), [...p, "background_color"], "#20242a")}${this._boolean([...p, "use_gradient"], this._t("use_gradient"))}</div>${this._list([...p, "spools"], "spool", 5)}`;
+    if (widget.type === "printer") {
+      const scale = c.model_size === "small" ? 30 : c.model_size === "medium" ? 65 : c.model_size === "large" ? 100 : Number(c.model_size ?? 30);
+      return `<div class="grid">${this._select(this._t("design"), [...p, "design"], [["normal", this._t("normal")], ["compact", this._t("compact")]])}${this._input(this._t("height"), [...p, "printer_height"], "number", 'min="160" max="900" step="10"')}${this._imageField(this._t("printer_image"), [...p, "printer_image"])}${this._colorField(this._t("background_color"), [...p, "printer_background_color"], "#101113")}${this._boolean([...p, "printer_use_gradient"], this._t("use_gradient"))}${this._selector(this._t("model_entity"), [...p, "model_image_entity"], { entity: { domain: "image" } })}${this._imageField(this._t("model_image"), [...p, "model_image"])}${this._range(this._t("model_size"), [...p, "model_size"], scale)}${this._range(this._t("model_position"), [...p, "model_position"], Number(c.model_position ?? 50), 0, 100)}${this._boolean([...p, "model_use_effect"], this._t("use_effect"), false)}${this._selector(this._t("effect_entity"), [...p, "model_progress_entity"], { entity: { domain: "sensor" } })}</div><p class="hint">${this._t("effect_hint")}</p><div class="grid">${this._selector(this._t("camera"), [...p, "camera_entity"], { entity: { domain: "camera" } })}${this._select(this._t("start_view"), [...p, "default_view"], [["printer", this._t("view_printer")], ["camera", this._t("view_camera")]])}${this._input(this._t("camera_rotation"), [...p, "camera_rotation"], "number", 'step="1"')}${this._input(this._t("camera_zoom"), [...p, "camera_zoom"], "number", 'min="1" max="500" step="1"')}${this._select(this._t("camera_mirror"), [...p, "camera_mirror"], [["none", this._t("mirror_none")], ["horizontal", this._t("mirror_horizontal")], ["vertical", this._t("mirror_vertical")]])}${this._select(this._t("camera_controls"), [...p, "camera_controls"], [["native", this._t("controls_native")], ["adaptive", this._t("controls_adaptive")], ["disabled", this._t("controls_disabled")]])}</div><div class="embedded">${this._boolean([...p, "show_filaments"], this._t("show_filaments"), false)}${c.show_filaments === true ? this._list([...p, "filaments", "spools"], "spool", 5) : ""}</div><div class="embedded">${this._boolean([...p, "show_controls"], this._t("show_controls"), false)}${c.show_controls === true ? this._list([...p, "controls"], "small", 5) : ""}</div>`;
+    }
+    if (widget.type === "progress") return `<div class="grid">${this._selector(this._t("filename"), [...p, "filename_entity"], { entity: {} })}${this._selector(this._t("progress_entity"), [...p, "progress_entity"], { entity: {} })}${this._colorField(this._t("progress_color"), [...p, "progress_color"])}</div>`;
+    if (widget.type === "infos") return `<div class="grid">${this._layoutSelect([...p, "layout"])}</div>${this._list([...p, "items"], "info", 4)}`;
+    if (widget.type === "buttons") return `<div class="grid">${this._select(this._t("style"), [...p, "style"], [["small", this._t("small_bar")], ["large", this._t("large_bar")]])}${this._layoutSelect([...p, "layout"])}</div>${this._list([...p, "buttons"], c.style === "large" ? "large" : "small", c.style === "large" ? 4 : 5)}`;
+    if (widget.type === "slider") return `<p class="hint">${this._t("slider_hint")}</p><div class="grid">${this._selector(this._t("slider_entity"), [...p, "entity"], { entity: { domain: ["number", "input_number"] } })}${this._input(this._t("label"), [...p, "label"])}${this._selector(this._t("icon"), [...p, "icon"], { icon: {} })}</div>`;
+    return `<p>${this._t("unknown_widget")}: ${this._escape(widget.type)}</p>`;
+  }
+
+  _render() {
+    if (!this._config || !this.shadowRoot) return;
+    const previous = this.shadowRoot.querySelectorAll("details[data-open-key]");
+    previous.forEach((element) => { if (element.open) this._openRows.add(element.dataset.openKey); else this._openRows.delete(element.dataset.openKey); });
+    if (this._forceOpen) { this._openRows.add(this._forceOpen); this._forceOpen = null; }
+    const scrollPositions = [];
+    for (let element = this; element; element = element.parentElement || element.getRootNode?.().host) if (element.scrollTop) scrollPositions.push([element, element.scrollTop]);
+    const toolbar = (command, icon, title, extra = "") => `<button type="button" class="icon-button" data-command="${command}" title="${this._escape(title)}" aria-label="${this._escape(title)}" ${extra}><ha-icon icon="${icon}"></ha-icon></button>`;
+    this.shadowRoot.innerHTML = `<style>
+      :host{display:block;max-width:100%;color:var(--primary-text-color);font-family:inherit;container-type:inline-size}*{box-sizing:border-box;min-width:0}.editor{display:grid;gap:12px;padding:4px 0 16px}details{border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);overflow:clip}summary{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 10px;cursor:pointer;list-style:none;font-weight:600}summary::-webkit-details-marker{display:none}summary::after{content:'⌄';margin-left:2px;color:var(--secondary-text-color)}details[open]>summary::after{transform:rotate(180deg)}.row-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-body{padding:0 12px 14px}.tools{display:flex;gap:0}.icon-button{display:grid;place-items:center;width:32px;height:36px;min-width:32px;padding:0;color:var(--secondary-text-color);background:none;border:0;border-radius:6px;cursor:pointer}.icon-button:disabled{opacity:.25;cursor:default}.icon-button:hover{background:var(--secondary-background-color)}ha-icon{width:20px;height:20px}.drag-handle{touch-action:none;cursor:grab}.drag-target{outline:2px solid var(--primary-color);outline-offset:2px}.dragging{opacity:.5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.selector,label:not(.toggle),.image-field{display:grid;gap:6px;max-width:100%;min-width:0;align-content:start}label>span,.field-heading{font-size:12px;color:var(--secondary-text-color)}.field-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.clear{color:var(--primary-color);background:none;border:0;font:inherit;font-size:11px;padding:0;cursor:pointer}input,select{width:100%;min-height:42px;border:1px solid var(--divider-color);border-radius:8px;padding:8px 10px;background:transparent;color:var(--primary-text-color);font:inherit}input[type=range]{padding:0;border:0}input[type=checkbox]{width:20px;min-height:20px;flex:0 0 20px}.toggle{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0}.toggle>span{font-size:14px;color:var(--primary-text-color)}.enabled-toggle{width:20px;margin:0;cursor:pointer}ha-selector{display:block;width:100%;max-width:100%;overflow:hidden}.image-field{grid-column:1/-1;border:1px solid var(--divider-color);border-radius:8px;padding:8px}.item{border:1px solid var(--divider-color);border-radius:10px;padding:10px;margin-top:12px}.item-head{display:flex;align-items:center;justify-content:space-between}.embedded{border-top:1px solid var(--divider-color);margin-top:16px;padding-top:8px}.hint{font-size:12px;line-height:1.5;color:var(--secondary-text-color);margin:8px 0}.add{display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:10px 14px;min-height:44px;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);cursor:pointer;margin-top:12px}.add-widget{width:100%;background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:600;font-size:15px;margin:0}.widget-menu{display:grid;grid-template-columns:1fr 1fr;gap:8px}.widget-menu button{margin:0}.range output{font-weight:600}.off>.row-title{opacity:.5}@container(max-width:560px){.grid{grid-template-columns:1fr}.tools .duplicate-tool{display:none}summary{gap:4px;padding:8px 6px}.icon-button{width:28px;min-width:28px}}:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+    </style><div class="editor"><details data-open-key="general" ${this._openRows.has("general") ? "open" : ""}><summary>${this._t("general")}</summary><div class="row-body">${this._toggle("header", this._t("header"))}<div class="grid">${this._input(this._t("title"), ["name"])}${this._input(this._t("subtitle"), ["subtitle"])}${this._selector(this._t("status_entity"), ["status_entity"], { entity: {} })}</div></div></details>
+    <button type="button" class="add add-widget" data-command="widget-menu"><ha-icon icon="mdi:plus"></ha-icon>${this._t("add_widget")}</button>${this._menuOpen ? `<div class="widget-menu">${WIDGET_TYPES.map((type) => `<button type="button" class="add" data-command="add-widget" data-type="${type}">${this._t(WIDGET_LABELS[type])}</button>`).join("")}</div>` : ""}<p class="hint">${this._t("editor_note")}</p>
+    ${this._config.widgets.map((widget, index) => `<details data-widget-index="${index}" data-open-key="${this._escape(widget.id)}" ${this._openRows.has(widget.id) ? "open" : ""}><summary class="${widget.enabled === false ? "off" : ""}">${toolbar("drag", "mdi:drag", this._t("drag"), 'class="drag-handle"')}<span class="row-title">${index + 1}. ${this._escape(this._t(WIDGET_LABELS[widget.type] || "widget"))}${widget.type === "buttons" && widget.config?.style === "large" ? ` · ${this._t("large_tab")}` : ""}</span><input class="enabled-toggle" type="checkbox" aria-label="${this._t("enabled")}" data-path="${this._path(["widgets", index, "enabled"])}" ${widget.enabled !== false ? "checked" : ""}><span class="tools">${toolbar("up", "mdi:arrow-up", this._t("move_up"), index === 0 ? "disabled" : "")}${toolbar("down", "mdi:arrow-down", this._t("move_down"), index === this._config.widgets.length - 1 ? "disabled" : "")}${toolbar("duplicate", "mdi:content-copy", this._t("duplicate"))}${toolbar("remove-widget", "mdi:delete-outline", this._t("remove_widget"))}</span></summary><div class="row-body">${this._widgetFields(widget, index)}</div></details>`).join("") || `<p class="hint">${this._t("no_widgets")}</p>`}</div>`;
+    // Prevent the summary toggle for controls, while leaving its title clickable.
+    this.shadowRoot.querySelectorAll("summary input").forEach((input) => input.addEventListener("click", (event) => event.stopPropagation()));
+    this.shadowRoot.querySelectorAll('[data-command="drag"]').forEach((handle) => handle.classList.add("drag-handle"));
+    this.shadowRoot.querySelectorAll("ha-selector").forEach((element) => {
+      element.hass = this._hass;
+      element.selector = JSON.parse(element.dataset.selector);
+      const value = this._get(JSON.parse(element.dataset.path), "");
+      element.value = element.hasAttribute("data-image-selector") || value === "" ? undefined : value;
+    });
+    requestAnimationFrame(() => scrollPositions.forEach(([element, top]) => { element.scrollTop = top; }));
+  }
+
+  _handleChange(event) {
+    super._handleChange(event);
+    const field = event.target.closest("[data-path]");
+    if (field && (field.type === "checkbox" || JSON.parse(field.dataset.path).at(-1) === "style")) this._render();
+  }
+
+  _handleSelector(event) {
+    const field = event.target.closest("ha-selector[data-path]");
+    if (!field) return;
+    if (field.hasAttribute("data-image-selector")) { super._handleSelector(event); return; }
+    event.stopPropagation();
+    const path = JSON.parse(field.dataset.path), value = event.detail?.value ?? "";
+    this._set(path, value);
+    const iconPath = [...path.slice(0, -1), "icon"];
+    if (path.at(-1) === "entity" && !path.includes("spools") && !Object.hasOwn(this._get(path.slice(0, -1), {}), "icon")) {
+      const icon = this._hass?.states[value]?.attributes.icon;
+      if (icon) {
+        this._set(iconPath, icon);
+        const selector = [...this.shadowRoot.querySelectorAll("ha-selector")].find((element) => element.dataset.path === JSON.stringify(iconPath));
+        if (selector) selector.value = icon;
+      }
+    }
+  }
+
+  _move(from, to) {
+    if (from === to || from < 0 || to < 0 || to >= this._config.widgets.length) return;
+    const next = JSON.parse(JSON.stringify(this._config));
+    const [widget] = next.widgets.splice(from, 1);
+    next.widgets.splice(to, 0, widget);
+    this._commit(next, true);
+  }
+
+  _newId() { return `widget-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`; }
+
+  _handleClick(event) {
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.closest("summary")) event.preventDefault();
+    if (button.dataset.clearPath) {
+      this._set(JSON.parse(button.dataset.clearPath), "");
+      const field = [...this.shadowRoot.querySelectorAll("[data-path]")].find((element) => element.dataset.path === button.dataset.clearPath);
+      if (field?.localName === "ha-selector") field.value = undefined;
+      else if (field) field.value = field.type === "color" ? "#03a9f4" : "";
+      return;
+    }
+    const command = button.dataset.command;
+    if (command === "drag") return;
+    if (command === "widget-menu") { this._menuOpen = !this._menuOpen; this._render(); return; }
+    const index = Number(button.closest("[data-widget-index]")?.dataset.widgetIndex);
+    if (command === "up" || command === "down") { this._move(index, index + (command === "up" ? -1 : 1)); return; }
+    const next = JSON.parse(JSON.stringify(this._config));
+    if (command === "add-widget") {
+      const type = button.dataset.type;
+      const defaults = { filaments: { spools: [], use_gradient: true }, printer: { design: "normal", model_size: 30, model_position: 50, show_filaments: false, show_controls: false }, progress: {}, infos: { items: [], layout: "vertical" }, buttons: { style: "small", buttons: [], layout: "vertical" }, slider: {} };
+      if (!WIDGET_TYPES.includes(type)) return;
+      const widget = { id: this._newId(), type, enabled: true, config: defaults[type] };
+      next.widgets.push(widget);
+      this._forceOpen = widget.id;
+      this._menuOpen = false;
+    } else if (command === "duplicate") {
+      const widget = JSON.parse(JSON.stringify(next.widgets[index]));
+      widget.id = this._newId();
+      next.widgets.splice(index + 1, 0, widget);
+      this._forceOpen = widget.id;
+    } else if (command === "remove-widget") next.widgets.splice(index, 1);
+    else if (command === "add-item" || command === "remove-item") {
+      const path = JSON.parse(button.dataset.list);
+      let target = next;
+      path.forEach((key, position) => { target[key] ??= position === path.length - 1 ? [] : {}; target = target[key]; });
+      if (command === "add-item" && target.length < Number(button.dataset.limit)) target.push({});
+      if (command === "remove-item") target.splice(Number(button.dataset.index), 1);
+    } else return;
+    this._commit(next, true);
+  }
+
+  _startDrag(event) {
+    const handle = event.target.closest('[data-command="drag"]');
+    if (!handle || event.button !== 0) return;
+    event.preventDefault();
+    const row = handle.closest("[data-widget-index]");
+    this._drag = { from: Number(row.dataset.widgetIndex), to: Number(row.dataset.widgetIndex), y: event.clientY, moved: false, handle };
+    handle.setPointerCapture(event.pointerId);
+  }
+
+  _dragMove(event) {
+    if (!this._drag) return;
+    if (Math.abs(event.clientY - this._drag.y) < 6 && !this._drag.moved) return;
+    this._drag.moved = true;
+    this.shadowRoot.querySelectorAll(".drag-target").forEach((element) => element.classList.remove("drag-target"));
+    const row = this.shadowRoot.elementFromPoint(event.clientX, event.clientY)?.closest("[data-widget-index]");
+    if (row) { this._drag.to = Number(row.dataset.widgetIndex); row.classList.add("drag-target"); }
+    // Scroll the actual HA editor container while dragging near its edges.
+    for (let node = this; node; node = node.parentElement || node.getRootNode?.().host) {
+      if (node.scrollHeight > node.clientHeight + 4 && ["auto", "scroll"].includes(getComputedStyle(node).overflowY)) {
+        const bounds = node.getBoundingClientRect();
+        if (event.clientY < bounds.top + 50) node.scrollTop -= 12;
+        if (event.clientY > bounds.bottom - 50) node.scrollTop += 12;
+        break;
+      }
+    }
+  }
+
+  _finishDrag() {
+    const drag = this._drag;
+    this._drag = null;
+    this.shadowRoot.querySelectorAll(".drag-target").forEach((element) => element.classList.remove("drag-target"));
+    if (drag?.moved) this._move(drag.from, drag.to);
+  }
+}
+
+class ThreeDPrinterDashboard extends ThreeDPrinterCard {
+  static getStubConfig() {
+    return { type: "custom:three-d-printer-card", name: "3D Printer", schema_version: 1, widgets: [
+      { id: "printer-1", type: "printer", enabled: true, config: { design: "normal", model_size: 30, model_position: 50, show_filaments: false, show_controls: false } },
+      { id: "progress-1", type: "progress", enabled: true, config: {} }
+    ] };
+  }
+
+  setConfig(config) {
+    if (!config || typeof config !== "object") throw new Error("Card configuration is required");
+    this._config = createWidgetConfig(config);
+    // IDs also anchor the editor's expansion state and the row DOM.
+    const ids = this._config.widgets.map((widget) => widget.id);
+    if (ids.some((id) => typeof id !== "string" || !id) || new Set(ids).size !== ids.length) throw new Error("Each widget needs a unique non-empty id");
+    this._render();
+  }
+
+  _render() {
+    if (!this._config || !this.shadowRoot) return;
+    let card = this.shadowRoot.querySelector("ha-card");
+    if (!card) {
+      this.shadowRoot.innerHTML = `<style>${ThreeDPrinterCard.styles} .widget-stack{display:grid;gap:12px}header:empty{display:none}header[hidden]{display:none!important}.unsupported{color:var(--error-color);padding:10px}</style><ha-card><header></header><div class="widget-stack"></div></ha-card>`;
+      card = this.shadowRoot.querySelector("ha-card");
+    }
+    const header = card.querySelector("header"), c = this._config;
+    header.hidden = c.sections?.header === false;
+    header.innerHTML = `<div><h2>${this._escape(c.name || "3D Printer")}</h2>${c.subtitle ? `<p>${this._escape(c.subtitle)}</p>` : ""}</div>${c.status_entity ? `<button type="button" class="status" data-more-info="${this._escape(c.status_entity)}">${this._escape(this._value(c.status_entity, ""))}</button>` : ""}`;
+    const stack = card.querySelector(".widget-stack");
+    const existing = new Map([...stack.children].map((element) => [element.dataset.widgetId, element]));
+    const active = this._config.widgets.filter((widget) => widget.enabled !== false);
+    active.forEach((widget, index) => {
+      let row = existing.get(widget.id);
+      if (!row) { row = document.createElement("three-d-printer-widget-row"); row.dataset.widgetId = widget.id; }
+      if (stack.children[index] !== row) {
+        if (row.parentElement === stack && stack.moveBefore) stack.moveBefore(row, stack.children[index] || null);
+        else stack.insertBefore(row, stack.children[index] || null);
+      }
+      existing.delete(widget.id);
+      if (WIDGET_TYPES.includes(widget.type)) {
+        if (this._hass) row.hass = this._hass;
+        const config = widgetRowConfig(widget);
+        if (widget.type === "progress") config.name = c.name;
+        row.setConfig(config);
+      }
+      else { row._config = null; row.shadowRoot.innerHTML = `<p>${this._escape(this._t("unknown_widget"))}: ${this._escape(widget.type)}</p>`; }
+    });
+    existing.forEach((row) => row.remove());
+  }
+
+  _refreshDynamic() {
+    const status = this.shadowRoot.querySelector(".status");
+    if (status) { status.textContent = this._value(this._config.status_entity, ""); status.hidden = !status.textContent; }
+    this.shadowRoot.querySelectorAll("three-d-printer-widget-row").forEach((row) => { if (row._config) row.hass = this._hass; });
+  }
+
+  getCardSize() { return Math.max(1, this._config?.widgets.filter((widget) => widget.enabled !== false).length || 1) * 2; }
+  _onClick(event) {
+    const info = event.target.closest("[data-more-info]");
+    if (info?.dataset.moreInfo) this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: info.dataset.moreInfo } }));
+  }
+}
+
 // Custom element names must begin with an ASCII letter. `3d-printer-card`
 // would make customElements.define() throw "The string contains invalid characters".
-if (!customElements.get("three-d-printer-card")) customElements.define("three-d-printer-card", ThreeDPrinterCard);
-if (!customElements.get("three-d-printer-card-editor")) customElements.define("three-d-printer-card-editor", ThreeDPrinterCardEditor);
+if (!customElements.get("three-d-printer-widget-row")) customElements.define("three-d-printer-widget-row", ThreeDPrinterWidgetRow);
+if (!customElements.get("three-d-printer-card")) customElements.define("three-d-printer-card", ThreeDPrinterDashboard);
+if (!customElements.get("three-d-printer-card-editor")) customElements.define("three-d-printer-card-editor", ThreeDPrinterWidgetEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({ type: "three-d-printer-card", name: "Universal 3D Printer Card", description: "Universal 3D printer dashboard with camera, filaments and controls", preview: true });
 console.info(`%c 3D-PRINTER-CARD %c v${CARD_VERSION} `, "color:white;background:#03a9f4;font-weight:bold", "color:#03a9f4;background:#222");

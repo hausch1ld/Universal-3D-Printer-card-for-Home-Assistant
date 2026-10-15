@@ -1,9 +1,9 @@
-# Widget configuration — stage 1
+# Widget configuration — preview build
 
-This is an internal foundation for the next build, not a released editor or a
-user-facing YAML interface. The visible card and editor still use the existing
-configuration. The release version remains 0.8.3 until the widget rollout is
-ready.
+The 0.9.0-beta.1 test build uses this model for rendering and editing. Legacy
+configurations are normalized in memory; merely opening a dashboard/editor does
+not save changes. The widget schema is emitted through the usual HA
+`config-changed` event when the user edits the configuration.
 
 ## Model
 
@@ -59,7 +59,7 @@ reordering can preserve expansion state, focused fields and camera playback.
 Repeated widget types are allowed. General settings (name, subtitle, status,
 header visibility, HA layout settings, etc.) remain on the card itself.
 Buttons use `style: large` for metrics and `style: small` for action controls.
-The slider widget will be implemented in a later stage.
+The slider widget uses `type: slider` and `config: {entity, label, icon}`.
 
 ## Legacy mapping
 
@@ -86,17 +86,27 @@ The slider widget will be implemented in a later stage.
 - Original top-level fields are retained for recovery and extensions. Once the
   widget renderer is introduced, `widgets` is authoritative whenever present.
 
-## Stage boundary
+## Runtime behavior
 
-The card currently prepares `_widgetConfig` on `setConfig`; `_config`, rendering
-and the existing visual editor remain unchanged. Merely loading a dashboard
-does not emit `config-changed`, rewrite YAML, update a release, or contact GitHub.
-The future widget editor must work on the migrated copy and emit it only through
-the normal explicit configuration editing flow. Do not pass the new schema
-through the old editor's lossy legacy action conversion.
+The dashboard owns the single outer `ha-card` and reconciles rows by widget ID.
+Each internal row owns its shadow DOM, camera state and handlers. State changes
+update row contents rather than replace the whole dashboard. Unchanged rows are
+retained during configuration edits; `moveBefore` preserves their state on
+reorder where supported by the browser.
 
-Next: render each widget independently, including repeated widget types and
-per-widget camera/control state. Then replace tabs with collapsible, reorderable
-rows. Migration tests must remain green throughout both changes.
+The editor preserves all row properties, including unknown extensions, advanced
+info formatting and legacy service actions. Selecting a replacement simple
+entity on an action explicitly removes its old custom action. Clearing an icon
+saves an explicit empty value so the entity icon is not silently restored.
+
+Printer widgets use independent `show_filaments` and `show_controls` flags. The
+normal/compact choice only controls the height reduction; embedded content stays
+inside the printer widget either way. `model_use_effect` and
+`model_progress_entity` control clipping only the model image.
+
+Unknown widget types are retained in YAML and display a warning. An explicit
+empty `widgets` array renders no rows instead of resurrecting legacy sections.
+
+The beta is delivered locally for testing. It has not been pushed or released.
 
 Run the migration checks with `node --test tests/widget-config.test.cjs`.
