@@ -25,6 +25,17 @@
 - **Theme and language support:** responsive layouts follow light, dark and custom themes. English is the default; German follows Home Assistant's language setting. Numeric values respect Home Assistant's locale and entity display precision.
 - **Backward compatibility:** existing configurations are automatically adapted to widgets while preserving settings and assets. Advanced configuration remains available in YAML.
 
+## Latest Update
+- Flexible widget-based configuration with collapsible sections, drag-and-drop ordering, duplication, and removal.
+- Unlimited Number of filaments, buttons, and slider widgets
+- Independent widgets for filaments, printer/live camera, progress, information, buttons, and sliders.
+- Up to six embedded filaments and five controls in printer widgets.
+- Progressive model reveal based on a selectable print-progress entity.
+- Tile-style sliders supporting up to three controls per row, or one right-aligned slider beside its label and icon.
+- Custom slider subtitles with a {value} placeholder.
+- Combined or separate filament color and material entities, with Hex/RGB support and colored spool graphics when no image is available.
+- Optional line breaks between primary and secondary information values.
+
 ## How to
 
 ### 1. Install the card
