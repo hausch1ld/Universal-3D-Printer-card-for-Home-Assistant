@@ -1,6 +1,6 @@
 # Universal 3D Printer Card for Home Assistant
 
-## Widget editor preview — 0.9.0-beta.1
+## Widget editor preview — 0.9.0-beta.2
 
 This local test build adds independent, reorderable widgets. It is not yet a
 published HACS release. Existing YAML configurations continue to load; the
@@ -217,6 +217,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current test build: **0.9.0-beta.1** (latest published base: **0.8.3**)
+Current test build: **0.9.0-beta.2** (latest published base: **0.8.3**)
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.

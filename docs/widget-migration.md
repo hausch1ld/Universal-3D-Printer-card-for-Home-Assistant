@@ -1,6 +1,6 @@
 # Widget configuration — preview build
 
-The 0.9.0-beta.1 test build uses this model for rendering and editing. Legacy
+The 0.9.0-beta.2 test build uses this model for rendering and editing. Legacy
 configurations are normalized in memory; merely opening a dashboard/editor does
 not save changes. The widget schema is emitted through the usual HA
 `config-changed` event when the user edits the configuration.

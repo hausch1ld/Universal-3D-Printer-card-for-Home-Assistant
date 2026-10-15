@@ -2,7 +2,7 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.9.0-beta.1";
+const CARD_VERSION = "0.9.0-beta.2";
 
 // Migration is independent of hass and never writes back to the dashboard.
 // Both the renderer and editor consume this model.
@@ -689,7 +689,7 @@ class ThreeDPrinterCard extends HTMLElement {
   }
 
   static get styles() { return `
-    :host { display:block; --accent:var(--primary-color,#03a9f4); color:var(--primary-text-color,#eee); }
+    :host { display:block; min-width:0; width:100%; max-width:100%; box-sizing:border-box; --accent:var(--primary-color,#03a9f4); color:var(--primary-text-color,#eee); }
     * { box-sizing:border-box; }
     ha-card { overflow:hidden; padding:18px; }
     header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
@@ -1463,7 +1463,13 @@ class ThreeDPrinterDashboard extends ThreeDPrinterCard {
     if (!this._config || !this.shadowRoot) return;
     let card = this.shadowRoot.querySelector("ha-card");
     if (!card) {
-      this.shadowRoot.innerHTML = `<style>${ThreeDPrinterCard.styles} .widget-stack{display:grid;gap:12px}header:empty{display:none}header[hidden]{display:none!important}.unsupported{color:var(--error-color);padding:10px}</style><ha-card><header></header><div class="widget-stack"></div></ha-card>`;
+      this.shadowRoot.innerHTML = `<style>${ThreeDPrinterCard.styles}
+        ha-card{width:100%;min-width:0;max-width:100%}
+        .widget-stack{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:12px}
+        .widget-stack>three-d-printer-widget-row{display:block;min-width:0;width:100%;max-width:100%}
+        header>div{min-width:0;flex:1}h2{overflow-wrap:anywhere}.status{flex-shrink:0;max-width:45%;overflow:hidden;text-overflow:ellipsis}
+        header:empty{display:none}header[hidden]{display:none!important}.unsupported{color:var(--error-color);padding:10px}
+      </style><ha-card><header></header><div class="widget-stack"></div></ha-card>`;
       card = this.shadowRoot.querySelector("ha-card");
     }
     const header = card.querySelector("header"), c = this._config;

@@ -162,6 +162,33 @@ const path = require("node:path");
   await editor.locator('details[data-widget-index]').last().locator('summary .row-title').click();
   const emptyClear = editor.locator('.clear:visible').first();
   assert.ok(await emptyClear.count());
+  // Intrinsic content width (especially an unbroken job name) must never
+  // enlarge the grid track and push every other widget beyond the card edge.
+  for (const width of [320, 480, 800]) {
+    const geometry = await page.evaluate((width) => {
+      const container = document.createElement("div");
+      container.style.width = `${width}px`;
+      const testCard = document.createElement("three-d-printer-card");
+      const config = structuredClone(configMock);
+      config.name = "Kobra S1";
+      const progress = config.widgets.find((widget) => widget.type === "progress");
+      progress.config.filename_entity = "sensor.long_filename";
+      hassMock.states["sensor.long_filename"] = { state: "0915-1940-Mikrofon-Stand-6_plate(01)_PLA_0.16_2h30m14s".repeat(4), attributes: {} };
+      testCard.setConfig(config); testCard.hass = hassMock;
+      container.append(testCard); document.body.append(container);
+      const outer = testCard.shadowRoot.querySelector("ha-card");
+      const box = outer.getBoundingClientRect(), padding = parseFloat(getComputedStyle(outer).paddingRight);
+      const rows = [...testCard.shadowRoot.querySelectorAll("three-d-printer-widget-row")];
+      const content = rows.flatMap((row) => [...row.shadowRoot.querySelectorAll(".visual,.progress,.visual-actions,.metric,.job-line b")]);
+      const result = { width, outerWidth: box.width, maxRowRight: Math.max(...rows.map((row) => row.getBoundingClientRect().right - box.left)), maxContentRight: Math.max(...content.map((element) => element.getBoundingClientRect().right - box.left)), contentRight: box.width - padding, rowOverflow: rows.some((row) => row.scrollWidth > row.clientWidth + 1) };
+      container.remove();
+      return result;
+    }, width);
+    assert.ok(geometry.outerWidth <= width + 1, JSON.stringify(geometry));
+    assert.ok(geometry.maxRowRight <= geometry.contentRight + 1, JSON.stringify(geometry));
+    assert.ok(geometry.maxContentRight <= geometry.contentRight + 1, JSON.stringify(geometry));
+    assert.equal(geometry.rowOverflow, false, JSON.stringify(geometry));
+  }
   // Capture both theme variants of the editor and card.
   await page.evaluate(() => {
     editor.shadowRoot.querySelectorAll("details[data-widget-index]").forEach((element) => { element.open = false; });
