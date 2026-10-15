@@ -1,6 +1,6 @@
 # Universal 3D Printer Card for Home Assistant
 
-## Widget editor preview — 0.9.0-beta.4
+## Widget editor preview — 0.9.0-beta.5
 
 This local test build adds independent, reorderable widgets. It is not yet a
 published HACS release. Existing YAML configurations continue to load; the
@@ -13,8 +13,8 @@ visual editor writes the new structure after an edit is saved.
 - Each Filaments row supports up to five spools. Add another row for more.
 - Buttons rows can use the large sensor style (up to four per row) or the small
   action style (up to five per row). Add more rows as needed.
-- Printer widgets independently offer **Show Filaments** and **Show Controls**,
-  each supporting up to five embedded entries. The camera toggle is separate.
+- Printer widgets independently offer **Show Filaments** (up to six embedded
+  spools) and **Show Controls** (up to five entries). The camera toggle is separate.
 - **Use effect** plus a model-progress entity reveals the model from bottom to
   top. Missing progress falls back to the full image. The printer background and
   live camera are unaffected.
@@ -25,10 +25,16 @@ visual editor writes the new structure after an edit is saved.
   calls are sent on release, not for every intermediate movement. Existing
   single-slider configurations are converted automatically.
 - Number entities reporting `unknown` remain controllable so their first value
-  can be set. Missing/offline (`unavailable`) entities stay disabled. The
-  subtitle explains an absent value instead of silently showing a dash.
+  can be set. Missing/offline (`unavailable`) entities stay disabled. The default
+  subtitle always uses HA's formatted entity state, including unknown states.
 - Each slider has an editable subtitle: `{value}` shows the live value, custom
   text can include that placeholder, and an empty subtitle hides the line.
+- **Slider position** offers Bottom (up to three sliders per row) or Right
+  (one per row, with text/icon on the left). Remove extra sliders before changing
+  a multi-slider row to Right; no configured sliders are silently discarded.
+- Info entries offer **Use line break** when a second entity is selected. The
+  separator stays at the end of the first line; clearing the second entity
+  resets the selector and removes the extra value.
 - Editor rows have a contrasting, theme-aware background. Text fields, native
   dropdowns and color pickers use a consistent height, including in Safari.
 
@@ -226,6 +232,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current test build: **0.9.0-beta.4** (latest published base: **0.8.3**)
+Current test build: **0.9.0-beta.5** (latest published base: **0.8.3**)
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.

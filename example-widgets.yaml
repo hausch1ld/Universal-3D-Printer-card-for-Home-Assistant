@@ -94,6 +94,7 @@ widgets:
     type: slider
     enabled: true
     config:
+      position: bottom # right places one slider beside its text/icon
       sliders:
         - label: Print speed
           subtitle: "{value}"

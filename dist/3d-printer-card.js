@@ -2,7 +2,7 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.9.0-beta.4";
+const CARD_VERSION = "0.9.0-beta.5";
 
 // Migration is independent of hass and never writes back to the dashboard.
 // Both the renderer and editor consume this model.
@@ -212,6 +212,7 @@ class ThreeDPrinterCard extends HTMLElement {
       icon: info.icon,
       format: info.format,
       secondary_entity: info.secondary_entity,
+      line_break: info.line_break,
       separator: info.separator
     }));
     const c = this._config || {};
@@ -230,11 +231,9 @@ class ThreeDPrinterCard extends HTMLElement {
   }
 
   _infoValue(info) {
-    if (info.format === "time") return this._displayTime(info.entity);
-    if (info.format === "end") return this._displayEnd(info.entity);
-    const primary = this._format(info.entity);
+    const primary = info.format === "time" ? this._displayTime(info.entity) : info.format === "end" ? this._displayEnd(info.entity) : this._format(info.entity);
     if (!info.secondary_entity) return primary;
-    return `${primary}${this._escape(info.separator || " / ")}${this._format(info.secondary_entity)}`;
+    return `${primary}${this._escape(info.separator ?? " / ")}${info.line_break === true ? "<br>" : ""}${this._format(info.secondary_entity)}`;
   }
 
   connectedCallback() {
@@ -339,7 +338,7 @@ class ThreeDPrinterCard extends HTMLElement {
   _spools(compact = false) {
     const ace = this._config?.ace;
     if (!ace) return "";
-    const spools = (ace.spools || []).slice(0, 5);
+    const spools = (ace.spools || []).slice(0, this._config._embeddedFilaments ? 6 : 5);
     const title = String(ace.label || "").trim();
     const aceColor = ace.background_color || (ace.use_gradient !== false ? "#101113" : "transparent");
     const backgroundStyle = compact ? "" : ` style="--ace-color:${this._escape(aceColor)};${this._image(ace.image) ? `--ace-image:url('${this._escape(this._image(ace.image))}')` : ""}"`;
@@ -574,7 +573,7 @@ class ThreeDPrinterCard extends HTMLElement {
     if (!ace || !c.ace) return;
     const aceImage = this._image(c.ace.image);
     ace.style.setProperty("--ace-image", aceImage ? `url('${aceImage.replaceAll("'", "%27")}')` : "none");
-    (c.ace.spools || []).slice(0, 5).forEach((spool, index) => {
+    (c.ace.spools || []).slice(0, c._embeddedFilaments ? 6 : 5).forEach((spool, index) => {
       const slot = ace.querySelector(`[data-spool="${index}"]`);
       if (!slot) return;
       const entityId = spool.entity || spool.image_entity;
@@ -1021,13 +1020,13 @@ class ThreeDPrinterCardEditor extends HTMLElement {
 }
 
 Object.assign(TRANSLATIONS.en, {
-  add_slider: "Add slider", remove_slider: "Remove slider", slider_color: "Slider color", slider_subtitle: "Subtitle", slider_subtitle_hint: "Use {value} for the live value, or leave empty to hide the subtitle.", slider_unknown: "No current value",
+  add_slider: "Add slider", remove_slider: "Remove slider", slider_color: "Slider color", slider_subtitle: "Subtitle", slider_subtitle_hint: "Use {value} for the live value, or leave empty to hide the subtitle.", unknown_value: "Unknown", slider_position: "Slider position", slider_bottom: "Bottom", slider_right: "Right", slider_right_hint: "Right-hand sliders support one slider per row. Remove additional sliders to select this layout.", line_break: "Use line break",
   add_widget: "Add Widget", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Enabled", move_up: "Move up", move_down: "Move down", drag: "Drag to reorder", remove_widget: "Remove widget", duplicate: "Duplicate widget",
   show_filaments: "Show Filaments", show_controls: "Show Controls", use_effect: "Use effect", effect_entity: "Model progress entity (%)", effect_hint: "Reveals the model from bottom to top. Missing progress shows the full model.",
   slider: "Slider", slider_entity: "Controllable entity", slider_hint: "Select a number or input_number entity. Range and step follow its attributes.", format: "Value format", format_default: "Home Assistant default", format_time: "Duration (h:mm:ss)", format_end: "Date and time", secondary_info: "Second entity (optional)", separator: "Separator", start_view: "Start view", view_printer: "Printer / model", view_camera: "Live camera", style: "Button style", no_widgets: "No widgets yet. Add your first widget above.", unknown_widget: "Unsupported widget type", service_error: "Could not set the value. Please try again.", entity_unavailable: "Entity unavailable", editor_note: "Each widget fills one row. Expand to configure; drag the handle to reorder.", optional: "Optional", legacy_action: "Custom YAML action preserved. Selecting an entity replaces it.",
 });
 Object.assign(TRANSLATIONS.de, {
-  add_slider: "Slider hinzufügen", remove_slider: "Slider entfernen", slider_color: "Slider-Farbe", slider_subtitle: "Untertitel", slider_subtitle_hint: "Mit {value} den aktuellen Wert anzeigen; leer lassen zum Ausblenden.", slider_unknown: "Noch kein aktueller Wert",
+  add_slider: "Slider hinzufügen", remove_slider: "Slider entfernen", slider_color: "Slider-Farbe", slider_subtitle: "Untertitel", slider_subtitle_hint: "Mit {value} den aktuellen Wert anzeigen; leer lassen zum Ausblenden.", unknown_value: "Unbekannt", slider_position: "Slider-Position", slider_bottom: "Unten", slider_right: "Rechts", slider_right_hint: "Bei Position Rechts ist ein Slider pro Reihe möglich. Entferne weitere Slider, um diese Ansicht auszuwählen.", line_break: "Zeilensprung verwenden",
   add_widget: "Widget hinzufügen", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Aktiviert", move_up: "Nach oben", move_down: "Nach unten", drag: "Zum Sortieren ziehen", remove_widget: "Widget entfernen", duplicate: "Widget duplizieren",
   show_filaments: "Filamente anzeigen", show_controls: "Controls anzeigen", use_effect: "Effekt verwenden", effect_entity: "Modell-Fortschrittsentität (%)", effect_hint: "Deckt das Modell von unten nach oben auf. Ohne verfügbaren Fortschritt bleibt das Modell vollständig sichtbar.",
   slider: "Slider", slider_entity: "Steuerbare Entität", slider_hint: "Wähle eine number- oder input_number-Entität. Grenzen und Schrittweite werden aus der Entität übernommen.", format: "Wertformat", format_default: "Home-Assistant-Standard", format_time: "Dauer (h:mm:ss)", format_end: "Datum und Uhrzeit", secondary_info: "Zweite Entität (optional)", separator: "Trennzeichen", start_view: "Startansicht", view_printer: "Drucker / Modell", view_camera: "Live-Kamera", style: "Button-Stil", no_widgets: "Noch keine Widgets. Füge oben dein erstes Widget hinzu.", unknown_widget: "Unbekannter Widget-Typ", service_error: "Wert konnte nicht gesetzt werden. Bitte erneut versuchen.", entity_unavailable: "Entität nicht verfügbar", editor_note: "Jedes Widget belegt eine Reihe. Zum Konfigurieren aufklappen; am Griff die Reihenfolge ändern.", optional: "Optional", legacy_action: "Eigene YAML-Aktion erhalten. Die Auswahl einer Entität ersetzt sie.",
@@ -1048,6 +1047,7 @@ function widgetRowConfig(widget) {
     sections.multi_filament = c.show_filaments === true;
     sections.small_buttons = c.show_controls === true;
     row.ace = c.filaments || { spools: [] };
+    row._embeddedFilaments = true;
     row.small_buttons = (c.controls || []).slice(0, 5);
     row.design = "compact"; // overlays are independent of the height setting
     row._heightCompact = c.design === "compact";
@@ -1088,11 +1088,13 @@ class ThreeDPrinterWidgetRow extends ThreeDPrinterCard {
     super._render();
     const count = (this._section("small_buttons") ? this._smallButtons().slice(0, 5).length : 0) + (this._canToggleView() ? 1 : 0);
     const requestedHeight = Math.max(160, Number(this._config.printer_height) || 360) * (this._config._heightCompact ? .7 : 1);
-    const height = Math.max(requestedHeight, this._section("multi_filament") ? 170 : 0, count ? count * 24 + Math.max(0, count - 1) * 6 + 20 : 0);
+    const spoolCount = Math.min(6, this._config.ace?.spools?.length || 0);
+    const height = Math.max(requestedHeight, this._section("multi_filament") ? Math.max(170, spoolCount * 32 + Math.max(0, spoolCount - 1) * 4 + 12) : 0, count ? count * 24 + Math.max(0, count - 1) * 6 + 20 : 0);
     const controlSize = Math.max(20, Math.min(42, (height - 28 - Math.max(0, count - 1) * 6) / Math.max(1, count)));
     const style = document.createElement("style");
     style.textContent = `ha-card{border:0;border-radius:0;box-shadow:none;padding:0;background:transparent}.ace{margin:0}.job{padding:10px 2px}.details{margin:0 auto}.compact .visual{height:${height}px}.compact .visual-actions .action,.compact .visual-actions .view-hint{flex-basis:${controlSize}px;width:${controlSize}px;min-width:${controlSize}px;height:${controlSize}px;min-height:${controlSize}px}.model-image{transition:clip-path .5s ease}.metrics{padding:10px 0}.compact .visual-wrap:fullscreen .visual{height:100%}.compact .ace-compact .spools{max-height:${height - 12}px;gap:4px}.compact .ace-compact .spool{min-height:0;height:${Math.min(48, (height - 28) / 5)}px;padding:5px 2px 3px}.compact .ace-compact .spool img{height:${Math.min(25, (height - 28) / 5 - 17)}px;width:auto}.compact .visual-wrap{container-type:inline-size}@media(prefers-reduced-motion:reduce){.model-image{transition:none}}`;
     this.shadowRoot.append(style);
+    style.textContent += `.compact .ace-compact .spool{height:${Math.min(48, (height - 12 - Math.max(0, spoolCount - 1) * 4) / Math.max(1, spoolCount))}px}.compact .ace-compact .spool img{height:${Math.min(25, (height - 12 - Math.max(0, spoolCount - 1) * 4) / Math.max(1, spoolCount) - 18)}px}`;
     style.textContent += ".compact .visual{max-height:none}";
     this._applyEffect();
   }
@@ -1158,11 +1160,11 @@ class ThreeDPrinterWidgetRow extends ThreeDPrinterCard {
       this.shadowRoot.innerHTML = `<style>:host{display:block;min-width:0;width:100%;max-width:100%}.slider-grid{display:grid;grid-template-columns:repeat(var(--slider-count),minmax(0,1fr));gap:8px;min-width:0}.slider-grid>*{min-width:0;max-width:100%}</style><div class="slider-grid" data-slider-grid></div>`;
       grid = this.shadowRoot.querySelector("[data-slider-grid]");
     }
-    grid.style.setProperty("--slider-count", Math.max(1, Math.min(3, settings.length)));
+    grid.style.setProperty("--slider-count", this._config.position === "right" ? 1 : Math.max(1, Math.min(3, settings.length)));
     settings.forEach((config, index) => {
       let tile = grid.children[index];
       if (!tile) { tile = document.createElement("three-d-printer-value-slider"); grid.append(tile); }
-      tile.setConfig(config);
+      tile.setConfig({ ...config, position: this._config.position || "bottom" });
       if (this._hass) tile.hass = this._hass;
     });
     while (grid.children.length > settings.length) grid.lastElementChild.remove();
@@ -1222,6 +1224,10 @@ class ThreeDPrinterValueSlider extends ThreeDPrinterCard {
       :host{display:block;min-width:0;width:100%;max-width:100%;box-sizing:border-box;color:var(--primary-text-color);--tile-color:var(--primary-color,#03a9f4)}*{box-sizing:border-box;min-width:0}.slider-tile{padding:10px;border:1px solid var(--ha-card-border-color,var(--divider-color,rgba(127,127,127,.2)));border-radius:var(--ha-card-border-radius,12px);background:var(--ha-card-background,var(--card-background-color));overflow:hidden}.tile-header{display:flex;align-items:center;gap:8px;min-height:36px;margin-bottom:10px}.tile-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--tile-color) 20%,transparent);color:var(--tile-color)}ha-icon{width:22px;height:22px}.tile-copy{flex:1;min-width:0}.label{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;line-height:20px}.value{display:block;font-size:12px;line-height:16px;color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}ha-control-slider{--control-slider-color:var(--tile-color);--control-slider-background:var(--tile-color);--control-slider-background-opacity:.2;--control-slider-thickness:42px;--control-slider-border-radius:12px;width:100%;height:42px}.fallback-track{position:relative;height:42px;border-radius:12px;overflow:hidden;background:color-mix(in srgb,var(--tile-color) 20%,transparent)}.fallback-fill{position:absolute;inset:0 auto 0 0;width:calc(12px + (100% - 24px) * var(--ratio,0));border-radius:12px;background:var(--tile-color);pointer-events:none}.fallback-track input{position:absolute;left:10px;top:0;width:calc(100% - 20px);height:42px;margin:0;padding:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer}.fallback-track input::-webkit-slider-runnable-track{height:42px;background:transparent}.fallback-track input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;margin-top:11px;width:4px;height:20px;border-radius:2px;border:0;background:#fff;box-shadow:none}.fallback-track input::-moz-range-track{height:42px;background:transparent}.fallback-track input::-moz-range-thumb{width:4px;height:20px;border:0;border-radius:2px;background:#fff}.fallback-track input:focus-visible{outline:2px solid var(--tile-color);outline-offset:-2px}.slider-tile.unavailable ha-control-slider,.slider-tile.unavailable .fallback-track{opacity:.4;pointer-events:none}.error{color:var(--error-color);font-size:12px;line-height:1.4;margin-top:6px;overflow-wrap:anywhere}[hidden]{display:none!important}
     </style><section class="slider-tile"><div class="tile-header"><div class="tile-icon" data-slider-icon-wrap><ha-icon data-slider-icon></ha-icon></div><div class="tile-copy"><span class="label" data-slider-label></span><span class="value" data-slider-value></span></div></div>${native ? '<ha-control-slider data-entity-slider show-handle></ha-control-slider>' : '<div class="fallback-track"><div class="fallback-fill"></div><input type="range" data-entity-slider></div>'}<div class="error" role="alert" data-slider-error hidden></div></section>`;
     const slider = this.shadowRoot.querySelector("[data-entity-slider]");
+    const layout = document.createElement("style");
+    layout.textContent = `.slider-tile.right{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:16px}.right .tile-header{margin:0}.right .fallback-track,.right ha-control-slider{min-width:0;width:100%}.right .error{grid-column:1/-1}`;
+    this.shadowRoot.append(layout);
+    this.shadowRoot.querySelector(".slider-tile").classList.toggle("right", this._config.position === "right");
     slider.addEventListener("pointerdown", () => { this._sliderDragging = true; });
     slider.addEventListener("keydown", () => { this._sliderDragging = true; });
     slider.addEventListener("pointercancel", () => { this._sliderDragging = false; this._refreshSlider(); });
@@ -1289,7 +1295,7 @@ class ThreeDPrinterValueSlider extends ThreeDPrinterCard {
     const icon = this.shadowRoot.querySelector("[data-slider-icon]");
     icon.setAttribute("icon", c.icon ?? state?.attributes.icon ?? "mdi:tune");
     this.shadowRoot.querySelector("[data-slider-icon-wrap]").hidden = c.icon === "";
-    if (!this._sliderDragging && !this._sliderPending) this._setSubtitle(unavailable ? this._t("entity_unavailable") : this._sliderRequested != null ? `${this._sliderRequested} ${state.attributes.unit_of_measurement || ""}`.trim() : value == null ? this._t("slider_unknown") : (this._hass?.formatEntityState?.(state) ?? state.state));
+    if (!this._sliderDragging) this._setSubtitle(state ? (this._hass?.formatEntityState?.(state) ?? state.state) : this._t("unknown_value"));
     if (!this._sliderDragging) this._paintSlider(Number(slider.value));
   }
 
@@ -1381,6 +1387,7 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
   }
 
   _list(path, kind, limit) {
+    if (kind === "spool" && path.includes("filaments")) limit = 6;
     const items = this._get(path, []);
     const title = kind === "spool" ? this._t("spool") : kind === "info" ? this._t("info") : kind === "slider" ? this._t("slider") : kind === "large" ? this._t("large_button") : this._t("small_button");
     return `<div class="list">${items.map((item, index) => {
@@ -1394,7 +1401,7 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
         fields += this._selector(this._t("icon"), [...p, "icon"], { icon: {} });
         fields += this._selector(kind === "large" ? this._t("main_value") : kind === "info" ? this._t("info_entity") : this._t("action_entity"), [...p, "entity"], { entity: kind === "small" ? { domain: ["button", "switch", "light"] } : kind === "large" ? { domain: "sensor" } : {} });
         if (kind === "large") fields += this._input(this._t("main_unit"), [...p, "unit"]) + this._selector(this._t("secondary_entity"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("secondary_label"), [...p, "secondary_label"]) + this._input(this._t("secondary_unit"), [...p, "secondary_unit"]);
-        if (kind === "info") fields += this._select(this._t("format"), [...p, "format"], [["", this._t("format_default")], ["time", this._t("format_time")], ["end", this._t("format_end")]]) + this._selector(this._t("secondary_info"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("separator"), [...p, "separator"]);
+        if (kind === "info") fields += this._select(this._t("format"), [...p, "format"], [["", this._t("format_default")], ["time", this._t("format_time")], ["end", this._t("format_end")]]) + this._selector(this._t("secondary_info"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("separator"), [...p, "separator"]) + (item.secondary_entity ? this._boolean([...p, "line_break"], this._t("line_break"), false) : "");
       }
       return `<div class="item"><div class="item-head"><b>${title} ${index + 1}</b><button type="button" class="icon-button" data-command="remove-item" data-list="${this._path(path)}" data-index="${index}" aria-label="${this._t(kind === "slider" ? "remove_slider" : "remove_button")}"><ha-icon icon="mdi:minus"></ha-icon></button></div>${item._legacyKey ? `<p class="hint">${this._t("legacy_action")}</p>` : ""}<div class="grid">${fields}</div></div>`;
     }).join("")}${items.length < limit ? `<button type="button" class="add" data-command="add-item" data-kind="${kind}" data-list="${this._path(path)}" data-limit="${limit}"><ha-icon icon="mdi:plus"></ha-icon>${kind === "spool" ? this._t("add_spool") : kind === "info" ? this._t("add_info") : kind === "slider" ? this._t("add_slider") : this._t("add_button")}</button>` : ""}</div>`;
@@ -1410,7 +1417,11 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
     if (widget.type === "progress") return `<div class="grid">${this._selector(this._t("filename"), [...p, "filename_entity"], { entity: {} })}${this._selector(this._t("progress_entity"), [...p, "progress_entity"], { entity: {} })}${this._colorField(this._t("progress_color"), [...p, "progress_color"])}</div>`;
     if (widget.type === "infos") return `<div class="grid">${this._layoutSelect([...p, "layout"])}</div>${this._list([...p, "items"], "info", 4)}`;
     if (widget.type === "buttons") return `<div class="grid">${this._select(this._t("style"), [...p, "style"], [["small", this._t("small_bar")], ["large", this._t("large_bar")]])}${this._layoutSelect([...p, "layout"])}</div>${this._list([...p, "buttons"], c.style === "large" ? "large" : "small", c.style === "large" ? 4 : 5)}`;
-    if (widget.type === "slider") return `<p class="hint">${this._t("slider_hint")}</p>${this._list([...p, "sliders"], "slider", 3)}`;
+    if (widget.type === "slider") {
+      const items = c.sliders || [], right = c.position === "right";
+      const position = this._select(this._t("slider_position"), [...p, "position"], [["bottom", this._t("slider_bottom")], ["right", this._t("slider_right")]], "bottom");
+      return `<div class="grid">${items.length > 1 && !right ? position.replace('<option value="right"', '<option disabled value="right"') : position}</div><p class="hint">${this._t("slider_hint")}</p>${items.length > 1 || right ? `<p class="hint">${this._t("slider_right_hint")}</p>` : ""}${this._list([...p, "sliders"], "slider", right ? 1 : 3)}`;
+    }
     return `<p>${this._t("unknown_widget")}: ${this._escape(widget.type)}</p>`;
   }
 
@@ -1450,7 +1461,7 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
   _handleChange(event) {
     super._handleChange(event);
     const field = event.target.closest("[data-path]");
-    if (field && (field.type === "checkbox" || JSON.parse(field.dataset.path).at(-1) === "style")) this._render();
+    if (field && (field.type === "checkbox" || ["style", "position"].includes(JSON.parse(field.dataset.path).at(-1)))) this._render();
   }
 
   _handleSelector(event) {
@@ -1469,6 +1480,7 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
         if (selector) selector.value = icon;
       }
     }
+    if (path.at(-1) === "secondary_entity") this._render();
   }
 
   _move(from, to) {
@@ -1486,10 +1498,12 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
     if (!button) return;
     if (button.closest("summary")) event.preventDefault();
     if (button.dataset.clearPath) {
+      event.preventDefault();
       this._set(JSON.parse(button.dataset.clearPath), "");
-      const field = [...this.shadowRoot.querySelectorAll("[data-path]")].find((element) => element.dataset.path === button.dataset.clearPath);
-      if (field?.localName === "ha-selector") field.value = undefined;
-      else if (field) field.value = field.type === "color" ? "#03a9f4" : "";
+      // HA selectors can retain their selected item internally when only their
+      // value property is set to undefined. Recreate them from the cleared
+      // configuration, preserving the editor's open rows and scroll position.
+      this._render();
       return;
     }
     const command = button.dataset.command;

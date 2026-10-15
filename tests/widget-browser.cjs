@@ -16,7 +16,8 @@ const path = require("node:path");
     customElements.define("ha-icon", class extends HTMLElement { connectedCallback() { this.style.display = "inline-block"; this.style.fontSize = "18px"; this.textContent = "◇"; } });
     customElements.define("ha-selector", class extends HTMLElement {
       constructor() { super(); this.attachShadow({ mode: "open" }); this.shadowRoot.innerHTML = '<style>input{box-sizing:border-box;width:100%;height:48px;background:#333;color:#eee;border:0;padding:10px;border-radius:4px}</style><input>'; this.shadowRoot.querySelector("input").addEventListener("change", (event) => this.dispatchEvent(new CustomEvent("value-changed", { bubbles: true, composed: true, detail: { value: event.target.value } }))); }
-      set value(value) { this.shadowRoot.querySelector("input").value = typeof value === "string" ? value : ""; }
+      // Reproduce HA selectors that retain their selection on undefined.
+      set value(value) { if (value !== undefined) this.shadowRoot.querySelector("input").value = typeof value === "string" ? value : ""; }
       get value() { return this.shadowRoot.querySelector("input").value; }
     });
     if (!fallback) customElements.define("ha-control-slider", class extends HTMLElement {
@@ -40,7 +41,7 @@ const path = require("node:path");
         "camera.one": { state: "idle", attributes: {} }, "camera.two": { state: "idle", attributes: {} }
       },
       hassUrl: (url) => url,
-      formatEntityState: (state) => `${state.state}${state.attributes.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : ""}`,
+      formatEntityState: (state) => ['unknown', 'unavailable'].includes(state.state) ? state.state : `${state.state}${state.attributes.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : ""}`,
       callService: async (...args) => { window.services.push(args); }
     };
     window.commitSlider = (element, value) => { element.value = value; element.dispatchEvent(new CustomEvent(element.localName === "ha-control-slider" ? "value-changed" : "change", { bubbles: true, composed: true, detail: { value } })); };
@@ -163,12 +164,22 @@ const path = require("node:path");
   await page.evaluate(() => secondSliderCard.remove());
   // Up to three independent tiles in one row, configured entirely in the editor.
   await editor.locator('details[data-widget-index]').filter({ has: page.locator('[data-kind="slider"]') }).locator('summary .row-title').click();
-  const sliderRow = editor.locator('details[data-widget-index]').filter({ has: page.locator('[data-kind="slider"]') });
+  const sliderRow = editor.locator('details[data-widget-index]').filter({ has: page.locator('input[data-path*=\'"sliders"\']') });
+  const positionSelect = sliderRow.locator('select[data-path*=\'"position"\']');
+  await positionSelect.selectOption('right');
+  assert.equal(await sliderRow.locator('[data-kind="slider"]').count(), 0);
+  const rightGeometry = await card.locator('.slider-tile').first().evaluate((tile) => {
+    const header = tile.querySelector('.tile-header').getBoundingClientRect(), control = tile.querySelector('.fallback-track,ha-control-slider').getBoundingClientRect();
+    return { gap: control.left - header.right, center: Math.abs((control.top + control.height / 2) - (header.top + header.height / 2)) };
+  });
+  assert.ok(rightGeometry.gap >= 15 && rightGeometry.center < 1, JSON.stringify(rightGeometry));
+  await positionSelect.selectOption('bottom');
   await sliderRow.locator('[data-command="add-item"]').click();
   await sliderRow.locator('[data-command="add-item"]').click();
   const sliderItems = editor.locator('details[data-widget-index]').filter({ has: page.locator('[data-path*=\'"sliders"\']') }).locator('.item');
   assert.equal(await sliderItems.count(), 3);
   assert.equal(await editor.locator('[data-kind="slider"]').count(), 0, "three is the editor maximum");
+  assert.equal(await editor.locator('select[data-path*=\'"position"\'] option[value=right]').evaluate((option) => option.disabled), true, await positionSelect.evaluate((select) => select.outerHTML));
   for (const [index, entity] of [[1, "input_number.temp"], [2, "number.speed"]]) {
     const input = sliderItems.nth(index).locator('ha-selector').first().locator('input');
     await input.fill(entity); await input.dispatchEvent('change');
@@ -187,7 +198,7 @@ const path = require("node:path");
   const bedTile = card.locator('three-d-printer-value-slider').nth(2);
   const bedControl = bedTile.locator('[data-entity-slider]');
   assert.equal(await bedControl.evaluate((element) => element.shadowRoot ? element.shadowRoot.querySelector('input').disabled : element.disabled), false);
-  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), 'No current value');
+  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), 'unknown');
   // Use the keyboard on the actual input instead of injecting a service event.
   const bedInput = process.env.WIDGET_SLIDER_FALLBACK ? bedControl : bedControl.locator('input');
   await bedInput.focus(); await bedInput.press('End');
@@ -208,6 +219,7 @@ const path = require("node:path");
   await bedControl.evaluate((element) => commitSlider(element, 150));
   await page.waitForFunction(() => services.length === 5);
   assert.equal(await page.evaluate(() => services[4][2].value), 120);
+  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), '0 °C', 'subtitle follows the entity, not the optimistic control value');
   await page.evaluate(() => { hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = 'unavailable'; card.hass = hassMock; });
   assert.equal(await bedControl.evaluate((element) => element.shadowRoot ? element.shadowRoot.querySelector('input').disabled : element.disabled), true);
   await bedControl.evaluate((element) => commitSlider(element, 80));
@@ -218,6 +230,40 @@ const path = require("node:path");
   assert.ok(fieldHeights.flat().every((height) => height === '56px'), JSON.stringify(fieldHeights));
   const rowColors = await editor.evaluate((element) => ({ row: getComputedStyle(element.shadowRoot.querySelector('details[data-widget-index]')).backgroundColor, item: getComputedStyle(element.shadowRoot.querySelector('.item')).backgroundColor }));
   assert.notEqual(rowColors.row, rowColors.item);
+  // Six embedded filaments fit, while standalone filament rows remain max five.
+  const printerIndex = await page.evaluate(() => configMock.widgets.findIndex((widget) => widget.type === 'printer'));
+  const printerDetails = editor.locator('details[data-widget-index]').nth(printerIndex);
+  await printerDetails.locator('summary .row-title').click();
+  await printerDetails.locator('[data-kind=spool]').click();
+  assert.equal(await printerDetails.locator('[data-kind=spool]').count(), 0);
+  assert.equal(await card.locator('.ace-compact .spool').count(), 6);
+  assert.ok(await card.locator('.ace-compact .spools').evaluate((spools) => [...spools.children].every((spool) => {
+    const box = spool.getBoundingClientRect(), scene = spool.closest('.visual-wrap').getBoundingClientRect();
+    return box.top >= scene.top && box.bottom <= scene.bottom;
+  })));
+  const infosIndex = await page.evaluate(() => configMock.widgets.findIndex((widget) => widget.type === 'infos'));
+  const infoDetails = editor.locator('details[data-widget-index]').nth(infosIndex);
+  await infoDetails.locator('summary .row-title').click();
+  const secondary = infoDetails.locator('ha-selector[data-path*=\'"secondary_entity"\'] input');
+  await secondary.fill('sensor.temp2'); await secondary.dispatchEvent('change');
+  const separator = infoDetails.locator('input[data-path*=\'"separator"\']');
+  await separator.fill(' / '); await separator.dispatchEvent('change');
+  const lineBreak = infoDetails.locator('input[data-path*=\'"line_break"\']');
+  const infoValue = card.locator('[data-info="0"]').first();
+  assert.equal(await infoValue.locator('br').count(), 0);
+  assert.ok((await infoValue.textContent()).includes(' / 60'));
+  await lineBreak.check();
+  assert.equal(await infoValue.locator('br').count(), 1);
+  assert.ok(await infoValue.evaluate((value) => value.querySelector('br').previousSibling.textContent.endsWith(' / ')));
+  await lineBreak.uncheck();
+  assert.equal(await infoValue.locator('br').count(), 0);
+  await infoDetails.locator('button[data-clear-path*=\'"secondary_entity"\']').click();
+  assert.equal(await secondary.inputValue(), '', 'clear resets HA selector internal selection');
+  assert.equal(await page.evaluate(() => configMock.widgets.find((w) => w.type === 'infos').config.items[0].secondary_entity), '');
+  assert.equal(await lineBreak.count(), 0);
+  assert.equal((await infoValue.textContent()).includes(' / '), false);
+  await page.evaluate(() => { const saved = structuredClone(configMock); editor.setConfig(saved); card.setConfig(saved); card.hass = hassMock; });
+  assert.equal(await secondary.inputValue(), '', 'cleared secondary stays cleared on reload');
   // Clear links remain visible and explicit blanks survive a reload.
   await editor.locator('details[data-widget-index]').last().locator('summary .row-title').click();
   const emptyClear = editor.locator('.clear:visible').first();
