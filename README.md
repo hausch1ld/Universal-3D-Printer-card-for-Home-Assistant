@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="15%" alt="3D printer dashboard example 0 src="https://github.com/user-attachments/assets/e9257613-aca1-48b1-8981-3502514ad413" />
+  <img width="15%" alt="3D printer dashboard example 0" src="https://github.com/user-attachments/assets/e9257613-aca1-48b1-8981-3502514ad413" />
   <img width="15%" alt="3D printer dashboard example 1" src="https://github.com/user-attachments/assets/ccec5c97-fc1a-4061-87d2-ea7bf9e13a9d" />
   <img width="15%" alt="3D printer dashboard example 2" src="https://github.com/user-attachments/assets/7b4ea512-93ee-4c58-ac5a-f0938e9c54cf" />
   <img width="15%" alt="3D printer dashboard example 3" src="https://github.com/user-attachments/assets/e50f75c4-3ac1-43f1-a485-3029f1143881" />
