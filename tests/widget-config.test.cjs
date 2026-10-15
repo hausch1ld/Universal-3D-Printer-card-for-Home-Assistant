@@ -133,3 +133,17 @@ test("widget ids are stable and unique across repeated normalization", () => {
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(migrate(input).widgets.map((widget) => widget.id), ids);
 });
+
+test("single beta sliders migrate losslessly to independent tile lists", () => {
+  const input = { schema_version: 1, widgets: [{ id: "speed", type: "slider", config: { entity: "number.speed", label: "", icon: "", color: "#ff8800", custom: true } }] };
+  const before = structuredClone(input);
+  const output = migrate(input);
+  assert.deepEqual(output.widgets[0].config.sliders, [{ entity: "number.speed", label: "", icon: "", color: "#ff8800" }]);
+  assert.equal(output.widgets[0].config.custom, true);
+  assert.deepEqual(input, before);
+  assert.deepEqual(migrate(output), output);
+  for (const length of [0, 1, 2, 3]) {
+    const config = { widgets: [{ id: "tiles", type: "slider", config: { entity: "number.old", sliders: Array.from({ length }, () => ({ entity: "number.speed" })) } }] };
+    assert.deepEqual(migrate(config), config);
+  }
+});

@@ -1,6 +1,6 @@
 # Universal 3D Printer Card for Home Assistant
 
-## Widget editor preview — 0.9.0-beta.2
+## Widget editor preview — 0.9.0-beta.3
 
 This local test build adds independent, reorderable widgets. It is not yet a
 published HACS release. Existing YAML configurations continue to load; the
@@ -18,10 +18,12 @@ visual editor writes the new structure after an edit is saved.
 - **Use effect** plus a model-progress entity reveals the model from bottom to
   top. Missing progress falls back to the full image. The printer background and
   live camera are unaffected.
-- Slider rows control `number` or `input_number` entities using Home Assistant's
-  slider component. Limits, step and unit follow the entity. The service call
-  is sent on change, not for every intermediate movement. A native range is
-  used while the HA component is loading.
+- Slider rows support up to three independent `number` or `input_number`
+  controls. Use **Add slider** to add another tile to the same row. The broad,
+  filled slider uses Home Assistant's tile control with a matching styled
+  fallback while it loads. Limits, step and unit follow each entity; service
+  calls are sent on release, not for every intermediate movement. Existing
+  single-slider configurations are converted automatically.
 
 The header remains in General settings. The surrounding Home Assistant tabs
 (Configuration, Visibility, Layout) are provided by HA itself; the card's own
@@ -217,6 +219,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current test build: **0.9.0-beta.2** (latest published base: **0.8.3**)
+Current test build: **0.9.0-beta.3** (latest published base: **0.8.3**)
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.

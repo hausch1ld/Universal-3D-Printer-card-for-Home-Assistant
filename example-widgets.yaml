@@ -94,6 +94,13 @@ widgets:
     type: slider
     enabled: true
     config:
-      label: Print speed
-      icon: mdi:speedometer
-      entity: number.printer_speed
+      sliders:
+        - label: Print speed
+          icon: mdi:speedometer
+          entity: number.printer_speed
+        - label: Nozzle
+          icon: mdi:printer-3d-nozzle-heat
+          entity: number.printer_nozzle_temperature
+        - label: Bed
+          icon: mdi:radiator
+          entity: number.printer_bed_temperature

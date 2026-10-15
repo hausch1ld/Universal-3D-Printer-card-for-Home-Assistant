@@ -11,7 +11,7 @@ const path = require("node:path");
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setContent(`<style>body{margin:0;padding:24px;background:#111;color:#eee;font-family:Arial;--primary-text-color:#eee;--secondary-text-color:#aaa;--card-background-color:#1c1c1c;--secondary-background-color:#292929;--divider-color:#444;--primary-color:#03a9f4;--error-color:#db4437;--ha-card-background:#1c1c1c}.layout{display:grid;grid-template-columns:560px 480px;gap:32px;align-items:start}#preview{position:sticky;top:16px}</style><div class="layout"><div id="editor"></div><div id="preview"></div></div>`);
-  await page.evaluate(() => {
+  await page.evaluate((fallback) => {
     customElements.define("ha-card", class extends HTMLElement { connectedCallback() { this.style.display = "block"; this.style.borderRadius = "12px"; this.style.background = "var(--ha-card-background)"; } });
     customElements.define("ha-icon", class extends HTMLElement { connectedCallback() { this.style.display = "inline-block"; this.style.fontSize = "18px"; this.textContent = "◇"; } });
     customElements.define("ha-selector", class extends HTMLElement {
@@ -19,8 +19,8 @@ const path = require("node:path");
       set value(value) { this.shadowRoot.querySelector("input").value = typeof value === "string" ? value : ""; }
       get value() { return this.shadowRoot.querySelector("input").value; }
     });
-    customElements.define("ha-slider", class extends HTMLElement {
-      constructor() { super(); this.attachShadow({ mode: "open" }); this.shadowRoot.innerHTML = '<style>input{width:100%;accent-color:#03a9f4;min-height:36px}</style><input type="range">'; const input = this.shadowRoot.querySelector("input"); ["change", "input"].forEach((type) => input.addEventListener(type, (event) => { event.stopPropagation(); this.dispatchEvent(new Event(type, { bubbles: true, composed: true })); })); }
+    if (!fallback) customElements.define("ha-control-slider", class extends HTMLElement {
+      constructor() { super(); this.attachShadow({ mode: "open" }); this.shadowRoot.innerHTML = '<style>:host{display:block}input{width:100%;accent-color:#03a9f4;height:42px;margin:0}</style><input type="range">'; const input = this.shadowRoot.querySelector("input"); ["change", "input"].forEach((type) => input.addEventListener(type, (event) => { event.stopPropagation(); this.dispatchEvent(new CustomEvent(type === "change" ? "value-changed" : "slider-moved", { bubbles: true, composed: true, detail: { value: Number(input.value) } })); })); }
       set value(v) { this.shadowRoot.querySelector("input").value = v; } get value() { return Number(this.shadowRoot.querySelector("input").value); }
       set min(v) { this.shadowRoot.querySelector("input").min = v; } set max(v) { this.shadowRoot.querySelector("input").max = v; }
       set step(v) { this.shadowRoot.querySelector("input").step = v; } set disabled(v) { this.shadowRoot.querySelector("input").disabled = v; }
@@ -43,7 +43,8 @@ const path = require("node:path");
       formatEntityState: (state) => `${state.state}${state.attributes.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : ""}`,
       callService: async (...args) => { window.services.push(args); }
     };
-  });
+    window.commitSlider = (element, value) => { element.value = value; element.dispatchEvent(new CustomEvent(element.localName === "ha-control-slider" ? "value-changed" : "change", { bubbles: true, composed: true, detail: { value } })); };
+  }, Boolean(process.env.WIDGET_SLIDER_FALLBACK));
   await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, "../dist/3d-printer-card.js"), "utf8") });
   await page.evaluate(() => {
     const svg = (text, color) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="250" height="300"><rect x="15" y="10" width="220" height="280" rx="15" fill="${color}"/><text x="125" y="150" fill="white" text-anchor="middle">${text}</text></svg>`)}`;
@@ -97,19 +98,19 @@ const path = require("node:path");
   const selector = sliderDetails.locator("ha-selector").first();
   await selector.locator("input").fill("number.speed"); await selector.locator("input").dispatchEvent("change");
   const slider = card.locator("[data-entity-slider]");
-  await slider.evaluate((element) => { element.value = 77; element.dispatchEvent(new Event("change", { bubbles: true, composed: true })); });
+  await slider.evaluate((element) => commitSlider(element, 77));
   await page.waitForFunction(() => services.length === 1);
   assert.deepEqual(await page.evaluate(() => services[0]), ["number", "set_value", { entity_id: "number.speed", value: 75 }]);
-  await page.evaluate(() => { window.savedSlider = card.shadowRoot.querySelector(".widget-stack").lastElementChild.shadowRoot.querySelector("[data-entity-slider]"); card.hass = hassMock; });
+  await page.evaluate(() => { window.savedSlider = card.shadowRoot.querySelector(".widget-stack").lastElementChild.shadowRoot.querySelector("three-d-printer-value-slider").shadowRoot.querySelector("[data-entity-slider]"); card.hass = hassMock; });
   assert.ok(await slider.evaluate((element) => element === savedSlider), "hass updates must preserve the slider node");
   // Unsupported/unavailable entities cannot cause writes; service failures are visible.
   await page.evaluate(() => { hassMock.states["number.speed"].state = "unavailable"; card.hass = hassMock; });
-  assert.ok(await slider.evaluate((element) => element.shadowRoot.querySelector("input").disabled));
-  await slider.evaluate((element) => { element.value = 100; element.dispatchEvent(new Event("change", { bubbles: true, composed: true })); });
+  assert.ok(await slider.evaluate((element) => element.shadowRoot ? element.shadowRoot.querySelector("input").disabled : element.disabled));
+  await slider.evaluate((element) => commitSlider(element, 100));
   assert.equal(await page.evaluate(() => services.length), 1);
   await page.evaluate(() => { hassMock.states["number.speed"].state = "75"; hassMock.callService = async () => { throw new Error("offline"); }; card.hass = hassMock; });
-  await slider.evaluate((element) => { element.value = 100; element.dispatchEvent(new Event("change", { bubbles: true, composed: true })); });
-  await page.waitForFunction(() => [...card.shadowRoot.querySelectorAll("three-d-printer-widget-row")].some((row) => row.shadowRoot.querySelector("[data-slider-error]")?.hidden === false));
+  await slider.evaluate((element) => commitSlider(element, 100));
+  await page.waitForFunction(() => [...card.shadowRoot.querySelectorAll("three-d-printer-widget-row")].some((row) => [...row.shadowRoot.querySelectorAll("three-d-printer-value-slider")].some((tile) => tile.shadowRoot.querySelector("[data-slider-error]")?.hidden === false)));
   await page.evaluate(() => { hassMock.callService = async (...args) => services.push(args); });
   // Duplicate and reorder multiple instances; updates stay scoped to each row.
   await editor.locator('[data-command="widget-menu"]').click();
@@ -120,7 +121,9 @@ const path = require("node:path");
   const after = await page.evaluate(() => configMock.widgets.map((w) => w.id));
   assert.equal(after[after.length - 2], before[before.length - 1]);
   // Pointer drag across rows also changes actual configuration order.
+  await page.evaluate(() => editor.shadowRoot.querySelectorAll('details[data-widget-index]').forEach((row) => { row.open = false; }));
   const rows = editor.locator('details[data-widget-index]');
+  await rows.nth(1).scrollIntoViewIfNeeded();
   const dragFrom = await rows.nth(1).locator('[data-command="drag"]').boundingBox();
   const dragTo = await rows.nth(2).locator("summary").boundingBox();
   if (dragFrom && dragTo) {
@@ -154,10 +157,26 @@ const path = require("node:path");
     secondSliderCard.setConfig(c); secondSliderCard.hass = hassMock; document.body.append(secondSliderCard);
   });
   const secondSlider = page.locator('three-d-printer-card').last().locator('[data-entity-slider]');
-  await secondSlider.evaluate((element) => { element.value = 250; element.dispatchEvent(new Event("change", { bubbles: true, composed: true })); });
+  await secondSlider.evaluate((element) => commitSlider(element, 250));
   await page.waitForFunction(() => services.length === 2);
   assert.deepEqual(await page.evaluate(() => services[1]), ["input_number", "set_value", { entity_id: "input_number.temp", value: 250 }]);
   await page.evaluate(() => secondSliderCard.remove());
+  // Up to three independent tiles in one row, configured entirely in the editor.
+  await editor.locator('details[data-widget-index]').filter({ has: page.locator('[data-kind="slider"]') }).locator('summary .row-title').click();
+  const sliderRow = editor.locator('details[data-widget-index]').filter({ has: page.locator('[data-kind="slider"]') });
+  await sliderRow.locator('[data-command="add-item"]').click();
+  await sliderRow.locator('[data-command="add-item"]').click();
+  const sliderItems = editor.locator('details[data-widget-index]').filter({ has: page.locator('[data-path*=\'"sliders"\']') }).locator('.item');
+  assert.equal(await sliderItems.count(), 3);
+  assert.equal(await editor.locator('[data-kind="slider"]').count(), 0, "three is the editor maximum");
+  for (const [index, entity] of [[1, "input_number.temp"], [2, "number.speed"]]) {
+    const input = sliderItems.nth(index).locator('ha-selector').first().locator('input');
+    await input.fill(entity); await input.dispatchEvent('change');
+  }
+  assert.equal(await card.locator('[data-entity-slider]').count(), 3);
+  await card.locator('[data-entity-slider]').nth(1).evaluate((element) => commitSlider(element, 210));
+  await page.waitForFunction(() => services.length === 3);
+  assert.deepEqual(await page.evaluate(() => services[2]), ["input_number", "set_value", { entity_id: "input_number.temp", value: 210 }]);
   // Clear links remain visible and explicit blanks survive a reload.
   await editor.locator('details[data-widget-index]').last().locator('summary .row-title').click();
   const emptyClear = editor.locator('.clear:visible').first();
@@ -179,8 +198,13 @@ const path = require("node:path");
       const outer = testCard.shadowRoot.querySelector("ha-card");
       const box = outer.getBoundingClientRect(), padding = parseFloat(getComputedStyle(outer).paddingRight);
       const rows = [...testCard.shadowRoot.querySelectorAll("three-d-printer-widget-row")];
-      const content = rows.flatMap((row) => [...row.shadowRoot.querySelectorAll(".visual,.progress,.visual-actions,.metric,.job-line b")]);
+      const tiles = rows.flatMap((row) => [...row.shadowRoot.querySelectorAll("three-d-printer-value-slider")]);
+      const sliders = tiles.map((tile) => tile.shadowRoot.querySelector("[data-entity-slider]"));
+      const tileBoxes = tiles.map((tile) => tile.getBoundingClientRect());
+      const content = [...rows.flatMap((row) => [...row.shadowRoot.querySelectorAll(".visual,.progress,.visual-actions,.metric,.job-line b")]), ...tiles];
       const result = { width, outerWidth: box.width, maxRowRight: Math.max(...rows.map((row) => row.getBoundingClientRect().right - box.left)), maxContentRight: Math.max(...content.map((element) => element.getBoundingClientRect().right - box.left)), contentRight: box.width - padding, rowOverflow: rows.some((row) => row.scrollWidth > row.clientWidth + 1) };
+      result.tiles = tileBoxes.map((tile) => ({ width: tile.width, top: tile.top }));
+      result.sliderHeights = sliders.map((slider) => slider.getBoundingClientRect().height);
       container.remove();
       return result;
     }, width);
@@ -188,6 +212,9 @@ const path = require("node:path");
     assert.ok(geometry.maxRowRight <= geometry.contentRight + 1, JSON.stringify(geometry));
     assert.ok(geometry.maxContentRight <= geometry.contentRight + 1, JSON.stringify(geometry));
     assert.equal(geometry.rowOverflow, false, JSON.stringify(geometry));
+    assert.equal(geometry.tiles.length, 3);
+    assert.ok(geometry.tiles.every((tile) => Math.abs(tile.top - geometry.tiles[0].top) < 1));
+    assert.ok(geometry.sliderHeights.every((height) => height === 42), JSON.stringify(geometry));
   }
   // Capture both theme variants of the editor and card.
   await page.evaluate(() => {
