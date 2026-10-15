@@ -241,6 +241,53 @@ const path = require("node:path");
     const box = spool.getBoundingClientRect(), scene = spool.closest('.visual-wrap').getBoundingClientRect();
     return box.top >= scene.top && box.bottom <= scene.bottom;
   })));
+  // The combined Anycubic entity supplies a ready-made SVG; split sources can
+  // instead supply just a color state and a material state, without a picture.
+  await page.evaluate(() => {
+    hassMock.states['sensor.slot_combined'] = { state: 'PETG', attributes: { color: '33, 39, 33', color_hex: '#212721', colors_hex: '#212721', icon: 'mdi:circle', entity_picture: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#212721"/></svg>')}` } };
+    hassMock.states['sensor.filament_color'] = { state: '33, 39, 33', attributes: { icon: 'mdi:palette' } };
+    hassMock.states['sensor.filament_type'] = { state: 'PETG', attributes: { icon: 'mdi:printer-3d-nozzle' } };
+    card.hass = hassMock; editor.hass = hassMock;
+  });
+  const spoolItem = printerDetails.locator('.item').filter({ has: page.locator('[data-command="toggle-spool-mode"]') }).nth(5);
+  const spoolEntity = spoolItem.locator('ha-selector[data-path*=\'"entity"\'] input').first();
+  await spoolEntity.fill('sensor.slot_combined'); await spoolEntity.dispatchEvent('change');
+  const lastSpool = card.locator('.ace-compact .spool').last();
+  assert.equal(await lastSpool.locator('img').count(), 1);
+  assert.equal(await lastSpool.locator('small').textContent(), 'PETG');
+  await spoolItem.locator('[data-command="toggle-spool-mode"]').click();
+  assert.equal(await spoolItem.locator('[data-command="toggle-spool-mode"]').textContent(), 'Single entity');
+  for (const [key, entity] of [['color_entity', 'sensor.filament_color'], ['type_entity', 'sensor.filament_type']]) {
+    const field = spoolItem.locator(`ha-selector[data-path*='"${key}"'] input`);
+    await field.fill(entity); await field.dispatchEvent('change');
+  }
+  assert.equal(await lastSpool.locator('img').count(), 0, 'icon-only entities must not become broken image URLs');
+  assert.equal(await lastSpool.locator('svg path').getAttribute('fill'), '#212721');
+  assert.equal(await lastSpool.locator('svg path').getAttribute('fill-rule'), 'evenodd', 'spool center is a real hole');
+  await page.evaluate(() => { hassMock.states['sensor.filament_color'].state = '#ffa500'; hassMock.states['sensor.filament_type'].state = 'PLA'; card.hass = hassMock; });
+  assert.equal(await lastSpool.locator('svg path').getAttribute('fill'), '#ffa500');
+  assert.equal(await lastSpool.locator('small').textContent(), 'PLA');
+  await spoolItem.locator('[data-command="toggle-spool-mode"]').click();
+  assert.equal(await spoolEntity.inputValue(), 'sensor.slot_combined', 'switching modes preserves the combined source');
+  assert.equal(await lastSpool.locator('img').count(), 1);
+  await spoolItem.locator('[data-command="toggle-spool-mode"]').click();
+  assert.equal(await spoolItem.locator('ha-selector[data-path*=\'"color_entity"\'] input').inputValue(), 'sensor.filament_color');
+  // The same data model and renderer are used by standalone filament widgets.
+  await page.evaluate(() => {
+    window.filamentTestCard = document.createElement('three-d-printer-card');
+    filamentTestCard.setConfig({ sections: { header: false }, widgets: [{ id: 'filament-test', type: 'filaments', config: { spools: [{ entity: 'sensor.slot_combined' }, { entity_mode: 'separate', color_entity: 'sensor.filament_color', type_entity: 'sensor.filament_type' }] } }] });
+    filamentTestCard.hass = hassMock; document.body.append(filamentTestCard);
+  });
+  const standalone = page.locator('three-d-printer-card').last();
+  assert.equal(await standalone.locator('.spool img').count(), 1);
+  assert.equal(await standalone.locator('.spool svg path').getAttribute('fill'), '#ffa500');
+  await page.evaluate(() => { hassMock.states['sensor.filament_color'].state = 'unknown'; filamentTestCard.hass = hassMock; });
+  assert.equal(await standalone.locator('.spool svg path').getAttribute('fill'), '#747876');
+  await standalone.locator('.spool img').dispatchEvent('error');
+  assert.equal(await standalone.locator('.spool img').count(), 0);
+  assert.equal(await standalone.locator('.spool svg').count(), 2, 'failed pictures fall back to colored spools');
+  await page.evaluate(() => { filamentTestCard.remove(); hassMock.states['sensor.filament_color'].state = [255, 165, 0]; card.hass = hassMock; });
+  assert.equal(await lastSpool.locator('svg path').getAttribute('fill'), '#ffa500');
   const infosIndex = await page.evaluate(() => configMock.widgets.findIndex((widget) => widget.type === 'infos'));
   const infoDetails = editor.locator('details[data-widget-index]').nth(infosIndex);
   await infoDetails.locator('summary .row-title').click();

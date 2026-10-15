@@ -5,6 +5,9 @@ sections:
   header: true
 status_entity: sensor.printer_status
 widgets:
+  # Spools accept entity: sensor.combined_slot, or use entity_mode: separate
+  # with color_entity: sensor.filament_color and type_entity: sensor.material.
+  # A static image remains optional in either mode.
   - id: filaments-first
     type: filaments
     enabled: true
@@ -17,6 +20,9 @@ widgets:
         - entity: sensor.spool_3
         - entity: sensor.spool_4
         - entity: sensor.spool_5
+          entity_mode: separate
+          color_entity: sensor.spool_5_color
+          type_entity: sensor.spool_5_material
   - id: filaments-second
     type: filaments
     enabled: true

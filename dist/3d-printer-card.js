@@ -2,7 +2,23 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.9.0-beta.5";
+const CARD_VERSION = "0.9.0-beta.6";
+
+// Only validated numeric colors reach SVG attributes; entity states are not CSS.
+function filamentColor(value) {
+  if (value == null) return "";
+  if (typeof value === "object" && !Array.isArray(value)) value = [value.r, value.g, value.b];
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (/^(?:#|0x)?[0-9a-f]{6}$/i.test(text)) return `#${text.replace(/^(#|0x)/i, "").toLowerCase()}`;
+    if (/^#[0-9a-f]{3}$/i.test(text)) return `#${[...text.slice(1)].map((digit) => digit + digit).join("").toLowerCase()}`;
+    const tuple = text.match(/^(?:rgb\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)|\[?\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]?)$/i);
+    if (!tuple) return "";
+    value = tuple[1] == null ? tuple.slice(4, 7) : tuple.slice(1, 4);
+  }
+  if (!Array.isArray(value) || value.length !== 3 || value.some((part) => part == null || part === "" || !Number.isFinite(Number(part)) || Number(part) < 0 || Number(part) > 255)) return "";
+  return `#${value.map((part) => Math.round(Number(part)).toString(16).padStart(2, "0")).join("")}`;
+}
 
 // Migration is independent of hass and never writes back to the dashboard.
 // Both the renderer and editor consume this model.
@@ -347,14 +363,47 @@ class ThreeDPrinterCard extends HTMLElement {
     return `<section class="ace ${compact ? "ace-compact" : ""}${gradient}${fiveSpools}"${backgroundStyle}>
       ${!compact && title ? `<div class="ace-title align-${this._escape(ace.title_alignment || "left")}">${this._escape(title)}</div>` : ""}
       <div class="spools" style="--spool-count:${Math.max(1, spools.length)}">${spools.map((spool, index) => {
-        const entityId = spool.entity || spool.image_entity;
-        const state = this._state(entityId);
-        const image = this._image(entityId) || this._image(spool.image);
-        const sensorLabel = !this._isMissing(state?.state) ? state.state : state?.attributes?.friendly_name;
-        const label = spool.label || sensorLabel || `${index + 1}`;
-        return `<div class="spool ${image ? "" : "empty"}" data-spool="${index}">${image ? `<img src="${this._escape(image)}" alt="${this._escape(label)}">` : `<span>${index + 1}</span>`}<small>${this._escape(label)}</small></div>`;
+        const data = this._spoolData(spool, index);
+        return `<div class="spool" data-spool="${index}">${this._spoolVisual(data)}<small>${this._escape(data.label)}</small></div>`;
       }).join("")}</div>
     </section>`;
+  }
+
+  _spoolData(spool, index) {
+    const separate = spool.entity_mode === "separate";
+    const combined = this._state(spool.entity || spool.image_entity);
+    const type = separate ? this._state(spool.type_entity) : combined;
+    const colorState = separate ? this._state(spool.color_entity) : combined;
+    const attributes = colorState?.attributes || {};
+    const colorCandidates = separate ? [colorState?.state] : [];
+    colorCandidates.push(attributes.color_hex, attributes.colors_hex, attributes.filament_color, attributes.hex_color, attributes.rgb_color, attributes.color, attributes.colour);
+    const color = colorCandidates.map(filamentColor).find(Boolean) || "#747876";
+    const material = [type?.attributes?.filament_type, type?.attributes?.material, type?.attributes?.filament_material, type?.attributes?.type, type?.state].find((value) => typeof value === "string" && !this._isMissing(value));
+    const label = spool.label || material || `${index + 1}`;
+    const image = (separate ? this._entityImage(spool.type_entity) || this._entityImage(spool.color_entity) : this._entityImage(spool.entity || spool.image_entity)) || this._image(spool.image);
+    return { color, label, image };
+  }
+
+  _spoolVisual(data) {
+    if (data.image) return `<img src="${this._escape(data.image)}" alt="${this._escape(data.label)}">`;
+    return `<svg class="spool-disc" viewBox="0 0 48 48" role="img" aria-label="${this._escape(data.label)}"><path fill="${data.color}" fill-rule="evenodd" d="M24 2a22 22 0 1 0 0 44a22 22 0 1 0 0-44z M24 17a7 7 0 1 1 0 14a7 7 0 1 1 0-14z"/><circle cx="24" cy="24" r="22" fill="none" stroke="#8b8b8b" stroke-width="2"/><circle cx="24" cy="24" r="12" fill="none" stroke="#8b8b8b" stroke-width="1.5" opacity=".55"/><circle cx="24" cy="24" r="7" fill="none" stroke="#8b8b8b" stroke-width="2"/></svg>`;
+  }
+
+  _refreshSpool(slot, spool, index) {
+    const data = this._spoolData(spool, index);
+    if (data.image === slot.dataset.failedImage) data.image = "";
+    const key = data.image || data.color;
+    if (slot.dataset.visual !== key) {
+      slot.querySelector("img,svg,span")?.remove();
+      slot.insertAdjacentHTML("afterbegin", this._spoolVisual(data));
+      slot.dataset.visual = key;
+      const image = slot.querySelector("img");
+      image?.addEventListener("error", () => { if (!image.isConnected) return; slot.dataset.failedImage = data.image; this._refreshSpool(slot, spool, index); });
+    }
+    const image = slot.querySelector("img");
+    if (image) image.alt = data.label;
+    slot.querySelector("svg")?.setAttribute("aria-label", data.label);
+    slot.querySelector("small").textContent = data.label;
   }
 
   _visual() {
@@ -576,13 +625,7 @@ class ThreeDPrinterCard extends HTMLElement {
     (c.ace.spools || []).slice(0, c._embeddedFilaments ? 6 : 5).forEach((spool, index) => {
       const slot = ace.querySelector(`[data-spool="${index}"]`);
       if (!slot) return;
-      const entityId = spool.entity || spool.image_entity;
-      const state = this._state(entityId);
-      const image = this._image(entityId) || this._image(spool.image);
-      const label = spool.label || (!this._isMissing(state?.state) ? state.state : state?.attributes?.friendly_name) || `${index + 1}`;
-      const img = slot.querySelector("img");
-      if (img && image && img.getAttribute("src") !== image) img.setAttribute("src", image);
-      slot.querySelector("small").textContent = label;
+      this._refreshSpool(slot, spool, index);
     });
   }
 
@@ -710,6 +753,7 @@ class ThreeDPrinterCard extends HTMLElement {
     .spool { min-width:0; text-align:center; } .spool img,.spool>span { display:block; width:58px; height:58px; max-width:100%; margin:auto; border-radius:50%; object-fit:contain; filter:drop-shadow(0 5px 6px rgba(0,0,0,.3)); }
     .spool>span { display:grid; place-items:center; border:5px solid rgba(255,255,255,.16); color:var(--secondary-text-color); }
     .spool small { display:block; overflow:hidden; margin-top:3px; color:var(--secondary-text-color); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+    .spool>.spool-disc{display:block;width:58px;height:58px;max-width:100%;margin:auto;filter:drop-shadow(0 5px 6px rgba(0,0,0,.3))}
     .visual-wrap { position:relative; } .visual { position:relative; display:block; width:100%; height:var(--printer-height); max-height:70vh; margin:0; padding:0; overflow:hidden; cursor:pointer; color:inherit; background:var(--printer-color); border:1px solid rgba(255,255,255,.08); border-radius:16px; } .visual:not([data-toggle-view]) { cursor:default; }
     .printer-gradient .visual { background:radial-gradient(circle at 50% 55%,rgba(255,255,255,.08),transparent 55%),var(--printer-color); }
     .printer-scene,.camera-host { display:block; width:100%; height:100%; } .printer-scene { position:relative; } .camera-host{overflow:hidden}.camera-host ha-camera-stream{display:block;width:100%;height:100%;transform:rotate(var(--camera-rotation)) scale(var(--camera-scale-x),var(--camera-scale-y));transform-origin:center center}
@@ -1020,12 +1064,14 @@ class ThreeDPrinterCardEditor extends HTMLElement {
 }
 
 Object.assign(TRANSLATIONS.en, {
+  separate_entities: "Separate entities", single_entity: "Single entity", filament_color: "Filament color", filament_type: "Filament type",
   add_slider: "Add slider", remove_slider: "Remove slider", slider_color: "Slider color", slider_subtitle: "Subtitle", slider_subtitle_hint: "Use {value} for the live value, or leave empty to hide the subtitle.", unknown_value: "Unknown", slider_position: "Slider position", slider_bottom: "Bottom", slider_right: "Right", slider_right_hint: "Right-hand sliders support one slider per row. Remove additional sliders to select this layout.", line_break: "Use line break",
-  add_widget: "Add Widget", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Enabled", move_up: "Move up", move_down: "Move down", drag: "Drag to reorder", remove_widget: "Remove widget", duplicate: "Duplicate widget",
+  add_widget: "Add Widget", widget: "Widget", buttons: "Buttons", infos: "Information", enabled: "Enabled", move_up: "Move up", move_down: "Move down", drag: "Drag to reorder", remove_widget: "Remove widget", duplicate: "Duplicate widget",
   show_filaments: "Show Filaments", show_controls: "Show Controls", use_effect: "Use effect", effect_entity: "Model progress entity (%)", effect_hint: "Reveals the model from bottom to top. Missing progress shows the full model.",
   slider: "Slider", slider_entity: "Controllable entity", slider_hint: "Select a number or input_number entity. Range and step follow its attributes.", format: "Value format", format_default: "Home Assistant default", format_time: "Duration (h:mm:ss)", format_end: "Date and time", secondary_info: "Second entity (optional)", separator: "Separator", start_view: "Start view", view_printer: "Printer / model", view_camera: "Live camera", style: "Button style", no_widgets: "No widgets yet. Add your first widget above.", unknown_widget: "Unsupported widget type", service_error: "Could not set the value. Please try again.", entity_unavailable: "Entity unavailable", editor_note: "Each widget fills one row. Expand to configure; drag the handle to reorder.", optional: "Optional", legacy_action: "Custom YAML action preserved. Selecting an entity replaces it.",
 });
 Object.assign(TRANSLATIONS.de, {
+  separate_entities: "Separate Entitäten", single_entity: "Einzelne Entität", filament_color: "Filament-Farbe", filament_type: "Filament-Typ",
   add_slider: "Slider hinzufügen", remove_slider: "Slider entfernen", slider_color: "Slider-Farbe", slider_subtitle: "Untertitel", slider_subtitle_hint: "Mit {value} den aktuellen Wert anzeigen; leer lassen zum Ausblenden.", unknown_value: "Unbekannt", slider_position: "Slider-Position", slider_bottom: "Unten", slider_right: "Rechts", slider_right_hint: "Bei Position Rechts ist ein Slider pro Reihe möglich. Entferne weitere Slider, um diese Ansicht auszuwählen.", line_break: "Zeilensprung verwenden",
   add_widget: "Widget hinzufügen", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Aktiviert", move_up: "Nach oben", move_down: "Nach unten", drag: "Zum Sortieren ziehen", remove_widget: "Widget entfernen", duplicate: "Widget duplizieren",
   show_filaments: "Filamente anzeigen", show_controls: "Controls anzeigen", use_effect: "Effekt verwenden", effect_entity: "Modell-Fortschrittsentität (%)", effect_hint: "Deckt das Modell von unten nach oben auf. Ohne verfügbaren Fortschritt bleibt das Modell vollständig sichtbar.",
@@ -1094,6 +1140,7 @@ class ThreeDPrinterWidgetRow extends ThreeDPrinterCard {
     const style = document.createElement("style");
     style.textContent = `ha-card{border:0;border-radius:0;box-shadow:none;padding:0;background:transparent}.ace{margin:0}.job{padding:10px 2px}.details{margin:0 auto}.compact .visual{height:${height}px}.compact .visual-actions .action,.compact .visual-actions .view-hint{flex-basis:${controlSize}px;width:${controlSize}px;min-width:${controlSize}px;height:${controlSize}px;min-height:${controlSize}px}.model-image{transition:clip-path .5s ease}.metrics{padding:10px 0}.compact .visual-wrap:fullscreen .visual{height:100%}.compact .ace-compact .spools{max-height:${height - 12}px;gap:4px}.compact .ace-compact .spool{min-height:0;height:${Math.min(48, (height - 28) / 5)}px;padding:5px 2px 3px}.compact .ace-compact .spool img{height:${Math.min(25, (height - 28) / 5 - 17)}px;width:auto}.compact .visual-wrap{container-type:inline-size}@media(prefers-reduced-motion:reduce){.model-image{transition:none}}`;
     this.shadowRoot.append(style);
+    style.textContent += `.compact .ace-compact .spool>.spool-disc,.compact .ace-compact.five-spools .spool>.spool-disc{width:${Math.min(25, (height - 12 - Math.max(0, spoolCount - 1) * 4) / Math.max(1, spoolCount) - 18)}px;height:${Math.min(25, (height - 12 - Math.max(0, spoolCount - 1) * 4) / Math.max(1, spoolCount) - 18)}px}`;
     style.textContent += `.compact .ace-compact .spool{height:${Math.min(48, (height - 12 - Math.max(0, spoolCount - 1) * 4) / Math.max(1, spoolCount))}px}.compact .ace-compact .spool img{height:${Math.min(25, (height - 12 - Math.max(0, spoolCount - 1) * 4) / Math.max(1, spoolCount) - 18)}px}`;
     style.textContent += ".compact .visual{max-height:none}";
     this._applyEffect();
@@ -1141,16 +1188,6 @@ class ThreeDPrinterWidgetRow extends ThreeDPrinterCard {
         scene.append(image);
       }
     }
-    // Spool entities can change from unavailable to a usable picture at runtime.
-    this.shadowRoot.querySelectorAll("[data-spool]").forEach((slot) => {
-      const spool = this._config.ace?.spools?.[Number(slot.dataset.spool)];
-      const src = this._image(spool?.entity || spool?.image_entity) || this._image(spool?.image);
-      if (src && !slot.querySelector("img")) {
-        const image = document.createElement("img"); image.src = src; image.alt = slot.querySelector("small")?.textContent || "";
-        slot.querySelector("span")?.replaceWith(image);
-        slot.classList.remove("empty");
-      }
-    });
   }
 
   _renderSlider() {
@@ -1392,8 +1429,14 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
     const title = kind === "spool" ? this._t("spool") : kind === "info" ? this._t("info") : kind === "slider" ? this._t("slider") : kind === "large" ? this._t("large_button") : this._t("small_button");
     return `<div class="list">${items.map((item, index) => {
       const p = [...path, index];
+      const removeLabel = this._t(kind === "spool" ? "remove_spool" : kind === "info" ? "remove_info" : kind === "slider" ? "remove_slider" : "remove_button");
       let fields = this._input(this._t("label"), [...p, "label"]);
-      if (kind === "spool") fields += this._selector(this._t("spool_entity"), [...p, "entity"], { entity: {} }) + this._imageField(this._t("static_spool_image"), [...p, "image"]);
+      if (kind === "spool") {
+        const separate = item.entity_mode === "separate";
+        const toggle = `<button type="button" class="clear" data-command="toggle-spool-mode" data-item-path="${this._path(p)}">${this._t(separate ? "single_entity" : "separate_entities")}</button>`;
+        fields += separate ? `<div class="spool-mode"><span class="field-heading"><span>${this._t("spool_entity")}</span>${toggle}</span></div>${this._selector(this._t("filament_color"), [...p, "color_entity"], { entity: {} })}${this._selector(this._t("filament_type"), [...p, "type_entity"], { entity: {} })}` : this._selector(this._t("spool_entity"), [...p, "entity"], { entity: {} }).replace('<button type="button" class="clear"', `${toggle}<button type="button" class="clear"`);
+        fields += this._imageField(this._t("static_spool_image"), [...p, "image"]);
+      }
       else if (kind === "slider") {
         fields += `<label><span>${this._t("slider_subtitle")}</span><input type="text" data-path="${this._path([...p, "subtitle"])}" value="${this._escape(item.subtitle ?? "{value}")}"><small class="hint">${this._t("slider_subtitle_hint")}</small></label>`;
         fields += this._selector(this._t("slider_entity"), [...p, "entity"], { entity: { domain: ["number", "input_number"] } }) + this._selector(this._t("icon"), [...p, "icon"], { icon: {} }) + this._colorField(this._t("slider_color"), [...p, "color"]);
@@ -1403,7 +1446,7 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
         if (kind === "large") fields += this._input(this._t("main_unit"), [...p, "unit"]) + this._selector(this._t("secondary_entity"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("secondary_label"), [...p, "secondary_label"]) + this._input(this._t("secondary_unit"), [...p, "secondary_unit"]);
         if (kind === "info") fields += this._select(this._t("format"), [...p, "format"], [["", this._t("format_default")], ["time", this._t("format_time")], ["end", this._t("format_end")]]) + this._selector(this._t("secondary_info"), [...p, "secondary_entity"], { entity: {} }) + this._input(this._t("separator"), [...p, "separator"]) + (item.secondary_entity ? this._boolean([...p, "line_break"], this._t("line_break"), false) : "");
       }
-      return `<div class="item"><div class="item-head"><b>${title} ${index + 1}</b><button type="button" class="icon-button" data-command="remove-item" data-list="${this._path(path)}" data-index="${index}" aria-label="${this._t(kind === "slider" ? "remove_slider" : "remove_button")}"><ha-icon icon="mdi:minus"></ha-icon></button></div>${item._legacyKey ? `<p class="hint">${this._t("legacy_action")}</p>` : ""}<div class="grid">${fields}</div></div>`;
+      return `<div class="item"><div class="item-head"><b>${title} ${index + 1}</b><button type="button" class="icon-button" data-command="remove-item" data-list="${this._path(path)}" data-index="${index}" aria-label="${removeLabel}"><ha-icon icon="mdi:minus"></ha-icon></button></div>${item._legacyKey ? `<p class="hint">${this._t("legacy_action")}</p>` : ""}<div class="grid">${fields}</div></div>`;
     }).join("")}${items.length < limit ? `<button type="button" class="add" data-command="add-item" data-kind="${kind}" data-list="${this._path(path)}" data-limit="${limit}"><ha-icon icon="mdi:plus"></ha-icon>${kind === "spool" ? this._t("add_spool") : kind === "info" ? this._t("add_info") : kind === "slider" ? this._t("add_slider") : this._t("add_button")}</button>` : ""}</div>`;
   }
 
@@ -1442,7 +1485,7 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
       input[type=color]::-webkit-color-swatch-wrapper{padding:0}input[type=color]::-webkit-color-swatch{border:0;border-radius:4px}input[type=color]::-moz-color-swatch{border:0;border-radius:4px}
       ha-selector{min-height:56px}input[type=checkbox]{height:20px}
       details[data-widget-index]{background:color-mix(in srgb,var(--primary-background-color,color-mix(in srgb,var(--card-background-color) 90%,var(--primary-text-color))) 65%,var(--card-background-color));border-color:var(--divider-color)}
-      .item{background:var(--card-background-color)}
+      .item{background:var(--card-background-color)}.spool-mode{grid-column:1/-1}.selector .field-heading>span:first-child{flex:1}.field-heading{flex-wrap:wrap}
     </style><div class="editor"><details data-open-key="general" ${this._openRows.has("general") ? "open" : ""}><summary>${this._t("general")}</summary><div class="row-body">${this._toggle("header", this._t("header"))}<div class="grid">${this._input(this._t("title"), ["name"])}${this._input(this._t("subtitle"), ["subtitle"])}${this._selector(this._t("status_entity"), ["status_entity"], { entity: {} })}</div></div></details>
     <button type="button" class="add add-widget" data-command="widget-menu"><ha-icon icon="mdi:plus"></ha-icon>${this._t("add_widget")}</button>${this._menuOpen ? `<div class="widget-menu">${WIDGET_TYPES.map((type) => `<button type="button" class="add" data-command="add-widget" data-type="${type}">${this._t(WIDGET_LABELS[type])}</button>`).join("")}</div>` : ""}<p class="hint">${this._t("editor_note")}</p>
     ${this._config.widgets.map((widget, index) => `<details data-widget-index="${index}" data-open-key="${this._escape(widget.id)}" ${this._openRows.has(widget.id) ? "open" : ""}><summary class="${widget.enabled === false ? "off" : ""}">${toolbar("drag", "mdi:drag", this._t("drag"), 'class="drag-handle"')}<span class="row-title">${index + 1}. ${this._escape(this._t(WIDGET_LABELS[widget.type] || "widget"))}${widget.type === "buttons" && widget.config?.style === "large" ? ` · ${this._t("large_tab")}` : ""}</span><input class="enabled-toggle" type="checkbox" aria-label="${this._t("enabled")}" data-path="${this._path(["widgets", index, "enabled"])}" ${widget.enabled !== false ? "checked" : ""}><span class="tools">${toolbar("up", "mdi:arrow-up", this._t("move_up"), index === 0 ? "disabled" : "")}${toolbar("down", "mdi:arrow-down", this._t("move_down"), index === this._config.widgets.length - 1 ? "disabled" : "")}${toolbar("duplicate", "mdi:content-copy", this._t("duplicate"))}${toolbar("remove-widget", "mdi:delete-outline", this._t("remove_widget"))}</span></summary><div class="row-body">${this._widgetFields(widget, index)}</div></details>`).join("") || `<p class="hint">${this._t("no_widgets")}</p>`}</div>`;
@@ -1497,6 +1540,13 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
     const button = event.target.closest("button");
     if (!button) return;
     if (button.closest("summary")) event.preventDefault();
+    if (button.dataset.command === "toggle-spool-mode") {
+      event.preventDefault();
+      const path = JSON.parse(button.dataset.itemPath);
+      this._set([...path, "entity_mode"], this._get([...path, "entity_mode"]) === "separate" ? "single" : "separate");
+      this._render();
+      return;
+    }
     if (button.dataset.clearPath) {
       event.preventDefault();
       this._set(JSON.parse(button.dataset.clearPath), "");

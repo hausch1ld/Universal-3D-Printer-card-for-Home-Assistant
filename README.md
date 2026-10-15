@@ -1,8 +1,8 @@
 # Universal 3D Printer Card for Home Assistant
 
-## Widget editor preview — 0.9.0-beta.5
+## Widget editor preview — 0.9.0-beta.6
 
-This local test build adds independent, reorderable widgets. It is not yet a
+This preview build adds independent, reorderable widgets. It is not yet a
 published HACS release. Existing YAML configurations continue to load; the
 visual editor writes the new structure after an edit is saved.
 
@@ -11,6 +11,16 @@ visual editor writes the new structure after an edit is saved.
 - Expand/collapse each row and reorder by dragging its handle or using the
   up/down buttons (also available on touch devices).
 - Each Filaments row supports up to five spools. Add another row for more.
+- Spools support a single combined entity or **Separate entities** for filament
+  color and material/type. Switch back with **Single entity**; both sets of
+  settings are retained. This also works for embedded printer filaments.
+  Combined entities can provide `color_hex`, `colors_hex`, `color`, `rgb_color`,
+  or `filament_color` attributes. Separate color entities can provide a hex or
+  RGB state (for example `#212721`, `33, 39, 33`, or `[33, 39, 33]`). Material
+  defaults to the type entity's state; an explicit Label overrides it.
+  Entity pictures and static images remain supported. Without a usable image,
+  a colored spool with a transparent center is drawn automatically; missing
+  colors use a neutral gray. No image assets need to be installed separately.
 - Buttons rows can use the large sensor style (up to four per row) or the small
   action style (up to five per row). Add more rows as needed.
 - Printer widgets independently offer **Show Filaments** (up to six embedded
@@ -53,7 +63,7 @@ The sections below describe the compatible legacy YAML interface.
 
 A configurable Lovelace dashboard card for 3D printers. It combines a printer view with a model overlay, switchable live camera, multi-filament display, print progress, freely selected information, metrics and printer controls.
 
-The card does not hardcode Anycubic or other manufacturer-specific entity names. All entities, images, labels and actions are configured in YAML.
+The card does not hardcode Anycubic or other manufacturer-specific entity names. Configure entities, images and labels in the visual editor, or use YAML for advanced actions and settings.
 
 <p align="center">
 <img width="20%" height="748" alt="Bildschirmfoto 2026-08-08 um 18 48 12" src="https://github.com/user-attachments/assets/ccec5c97-fc1a-4061-87d2-ea7bf9e13a9d" />
@@ -232,6 +242,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current test build: **0.9.0-beta.5** (latest published base: **0.8.3**)
+Current test build: **0.9.0-beta.6** (latest published base: **0.8.3**)
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.

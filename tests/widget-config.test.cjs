@@ -12,12 +12,32 @@ const context = vm.createContext({
   customElements: { get: (name) => registry.get(name), define: (name, value) => registry.set(name, value) },
   console: { info() {} }
 });
-vm.runInContext(`${source}\nglobalThis.migrate = createWidgetConfig;`, context);
+vm.runInContext(`${source}\nglobalThis.migrate = createWidgetConfig;globalThis.parseColor = filamentColor;globalThis.translations = TRANSLATIONS;`, context);
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const migrate = (config) => plain(context.migrate(config));
 const find = (config, type) => config.widgets.find((widget) => widget.type === type);
 const spools = (count) => Array.from({ length: count }, (_, index) => ({ entity: `sensor.spool_${index}`, image: `/local/spool-${index}.png` }));
 const controls = (count) => Array.from({ length: count }, (_, index) => ({ entity: `button.control_${index}`, icon: "mdi:play", label: `Control ${index}` }));
+
+test("filament colors accept safe hex and RGB formats only", () => {
+  for (const input of ['#212721', '212721', '0x212721', '33, 39, 33', 'rgb(33, 39, 33)', '[33,39,33]', [33, 39, 33], { r: 33, g: 39, b: 33 }]) assert.equal(context.parseColor(input), '#212721');
+  assert.equal(context.parseColor('#fF0'), '#ffff00');
+  assert.equal(context.parseColor([0, 0, 0]), '#000000');
+  for (const input of ['unknown', 'unavailable', null, '', 'red', 'url(https://example.com)', '#fff"/><script>', [-1, 0, 0], [300, 0, 0], [null, 0, 0], { r: 1 }]) assert.equal(context.parseColor(input), '', String(input));
+});
+
+test("every literal UI text key has both English and German translations", () => {
+  for (const match of source.matchAll(/\._t\("([a-z_]+)"\)/g)) {
+    for (const language of ['en', 'de']) assert.ok(context.translations[language][match[1]], `${language}: ${match[1]}`);
+  }
+});
+
+test("split filament settings survive legacy migration and mode changes", () => {
+  const spool = { entity: 'sensor.slot', entity_mode: 'separate', color_entity: 'sensor.color', type_entity: 'sensor.material', image: '/local/spool.png' };
+  const result = migrate({ ace: { spools: [spool] } });
+  assert.deepEqual(find(result, 'filaments').config.spools[0], spool);
+  assert.deepEqual(migrate(result), result);
+});
 
 test("normal cards retain order and all widget-specific settings", () => {
   const config = {
