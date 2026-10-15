@@ -29,7 +29,7 @@
 
 ### 1. Install the card
 
-> The widget-based editor described here is currently available on the `agent/widget-config-migration` preview branch. Until that version is released, use the manual installation below with the JavaScript file from that branch. The existing stable HACS release does not automatically include these preview features.
+> This guide describes the widget-based build on `main`. If your installed HACS version still uses the older tabbed editor, update to a release containing the widget editor or use the manual installation below with the JavaScript file from `main`.
 
 #### HACS custom repository
 
