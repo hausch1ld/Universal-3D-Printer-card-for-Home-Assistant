@@ -4,6 +4,84 @@
 
 const CARD_VERSION = "0.8.3";
 
+// Migration is deliberately independent of hass and never writes back to the
+// dashboard. The row renderer/editor will consume this model in the next step.
+function createWidgetConfig(source) {
+  const config = JSON.parse(JSON.stringify(source || {}));
+  // An explicit empty list means "no widgets", not "restore legacy widgets".
+  // Preserve future/unknown widget types and settings without filtering them.
+  if (Array.isArray(config.widgets)) return config;
+
+  const enabled = (section) => config.sections?.[section] !== false;
+  const pick = (keys) => Object.fromEntries(keys.filter((key) => Object.hasOwn(config, key)).map((key) => [key, config[key]]));
+  const chunks = (items, count) => {
+    const result = [];
+    for (let index = 0; index < items.length; index += count) result.push(items.slice(index, index + count));
+    return result;
+  };
+  const compact = config.design === "compact";
+  const widgets = [];
+  const add = (id, type, active, settings) => widgets.push({ id, type, enabled: active, config: settings });
+  const filamentConfig = config.ace || {};
+  const spoolRows = chunks(filamentConfig.spools || [], 5);
+  if (!spoolRows.length && config.ace) spoolRows.push([]);
+
+  const controlDefaults = { pause: ["Pause", "mdi:pause"], resume: ["Resume", "mdi:play"], stop: ["Stop", "mdi:stop"], light: ["Light", "mdi:lightbulb"] };
+  // Keep complete legacy actions (confirmation, service data, targets, etc.).
+  const controls = Array.isArray(config.small_buttons) ? config.small_buttons : Object.entries(config.actions || {}).map(([key, action]) => ({
+    ...action,
+    label: action.label || controlDefaults[key]?.[0],
+    icon: action.icon || controlDefaults[key]?.[1],
+    _legacyKey: key
+  }));
+  const metrics = Array.isArray(config.large_buttons) ? config.large_buttons : ["nozzle", "bed", "fan"].filter((key) => config.metrics?.[key]).map((key) => {
+    const metric = config.metrics[key];
+    return {
+      ...metric,
+      secondary_entity: metric.secondary_entity ?? metric.target_entity,
+      secondary_label: metric.secondary_label ?? metric.target_label,
+      secondary_unit: metric.secondary_unit ?? metric.target_unit,
+      _legacyKey: key
+    };
+  });
+
+  let infos = config.infos;
+  if (!Array.isArray(infos)) {
+    const labels = config.detail_labels || {};
+    infos = [];
+    // Missing labels are localized by the renderer, not baked into saved YAML.
+    if (config.layer_current_entity || config.layer_total_entity) infos.push({ label: labels.layer, entity: config.layer_current_entity, secondary_entity: config.layer_total_entity, separator: " / " });
+    if (config.elapsed_time_entity) infos.push({ label: labels.elapsed, entity: config.elapsed_time_entity, format: "time" });
+    if (config.remaining_time_entity) infos.push({ label: labels.remaining, entity: config.remaining_time_entity, format: "time" });
+    if (config.estimated_end_entity || config.total_time_entity) infos.push({ label: labels.estimated_end, entity: config.estimated_end_entity || config.total_time_entity, format: "end" });
+  }
+
+  // Compact cards attach the first filament/control group to the printer.
+  // Extra groups become independent rows; no configured entries are discarded.
+  const standaloneSpools = compact ? spoolRows.slice(1) : spoolRows;
+  standaloneSpools.forEach((spools, index) => add(`legacy-filaments-${index + 1}`, "filaments", enabled("multi_filament"), { ...filamentConfig, spools }));
+  const printer = pick([
+    "printer_image", "printer_background_color", "printer_use_gradient", "printer_height",
+    "model_image_entity", "model_image", "model_size", "model_position", "default_view",
+    "camera_entity", "camera_rotation", "camera_zoom", "camera_mirror", "camera_controls"
+  ]);
+  printer.design = config.design || "normal";
+  printer.show_filaments = compact && enabled("multi_filament") && Boolean(config.ace);
+  printer.filaments = compact ? { ...filamentConfig, spools: spoolRows[0] || [] } : { spools: [] };
+  printer.show_controls = compact && enabled("small_buttons") && controls.length > 0;
+  printer.controls = compact ? controls.slice(0, 5) : [];
+  add("legacy-printer", "printer", enabled("printer"), printer);
+  add("legacy-progress", "progress", enabled("progress"), pick(["filename_entity", "progress_entity", "progress_color"]));
+  chunks(infos, 4).forEach((items, index) => add(`legacy-infos-${index + 1}`, "infos", enabled("progress"), { layout: config.info_layout || "vertical", items }));
+  chunks(metrics, 4).forEach((buttons, index) => add(`legacy-large-buttons-${index + 1}`, "buttons", enabled("large_buttons"), { style: "large", layout: config.large_button_layout || "vertical", buttons }));
+  const standaloneControls = compact ? controls.slice(5) : controls;
+  chunks(standaloneControls, 5).forEach((buttons, index) => add(`legacy-controls-${index + 1}`, "buttons", enabled("small_buttons"), { style: "small", layout: config.small_button_layout || "vertical", buttons }));
+
+  // Keep the original fields, including extensions we do not recognize, for
+  // recovery. Once widgets exists, it alone defines the row contents/order.
+  return JSON.parse(JSON.stringify({ ...config, schema_version: 1, widgets }));
+}
+
 const TRANSLATIONS = {
   en: {
     general: "General", filaments: "Filaments", title: "Title", subtitle: "Subtitle", design: "Design", normal: "Normal", compact: "Compact", status_entity: "Status entity",
@@ -64,6 +142,7 @@ class ThreeDPrinterCard extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("3d-printer-card: configuration is required");
     this._config = config;
+    this._widgetConfig = createWidgetConfig(config);
     this._showCamera = config.default_view === "camera" || (config.camera_entity && !this._hasPrinterView(config));
     this._render();
   }
