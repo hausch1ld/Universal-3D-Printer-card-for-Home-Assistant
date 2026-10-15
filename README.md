@@ -1,8 +1,69 @@
 # Universal 3D Printer Card for Home Assistant
 
+## Widget editor preview — 0.9.0-beta.6
+
+This preview build adds independent, reorderable widgets. It is not yet a
+published HACS release. Existing YAML configurations continue to load; the
+visual editor writes the new structure after an edit is saved.
+
+- Add any number of rows with **Add Widget**: Filaments, Printer, Progress,
+  Infos, Buttons, or Slider.
+- Expand/collapse each row and reorder by dragging its handle or using the
+  up/down buttons (also available on touch devices).
+- Each Filaments row supports up to five spools. Add another row for more.
+- Spools support a single combined entity or **Separate entities** for filament
+  color and material/type. Switch back with **Single entity**; both sets of
+  settings are retained. This also works for embedded printer filaments.
+  Combined entities can provide `color_hex`, `colors_hex`, `color`, `rgb_color`,
+  or `filament_color` attributes. Separate color entities can provide a hex or
+  RGB state (for example `#212721`, `33, 39, 33`, or `[33, 39, 33]`). Material
+  defaults to the type entity's state; an explicit Label overrides it.
+  Entity pictures and static images remain supported. Without a usable image,
+  a colored spool with a transparent center is drawn automatically; missing
+  colors use a neutral gray. No image assets need to be installed separately.
+- Buttons rows can use the large sensor style (up to four per row) or the small
+  action style (up to five per row). Add more rows as needed.
+- Printer widgets independently offer **Show Filaments** (up to six embedded
+  spools) and **Show Controls** (up to five entries). The camera toggle is separate.
+- **Use effect** plus a model-progress entity reveals the model from bottom to
+  top. Missing progress falls back to the full image. The printer background and
+  live camera are unaffected.
+- Slider rows support up to three independent `number` or `input_number`
+  controls. Use **Add slider** to add another tile to the same row. The broad,
+  filled slider uses Home Assistant's tile control with a matching styled
+  fallback while it loads. Limits, step and unit follow each entity; service
+  calls are sent on release, not for every intermediate movement. Existing
+  single-slider configurations are converted automatically.
+- Number entities reporting `unknown` remain controllable so their first value
+  can be set. Missing/offline (`unavailable`) entities stay disabled. The default
+  subtitle always uses HA's formatted entity state, including unknown states.
+- Each slider has an editable subtitle: `{value}` shows the live value, custom
+  text can include that placeholder, and an empty subtitle hides the line.
+- **Slider position** offers Bottom (up to three sliders per row) or Right
+  (one per row, with text/icon on the left). Remove extra sliders before changing
+  a multi-slider row to Right; no configured sliders are silently discarded.
+- Info entries offer **Use line break** when a second entity is selected. The
+  separator stays at the end of the first line; clearing the second entity
+  resets the selector and removes the extra value.
+- Editor rows have a contrasting, theme-aware background. Text fields, native
+  dropdowns and color pickers use a consistent height, including in Safari.
+
+The header remains in General settings. The surrounding Home Assistant tabs
+(Configuration, Visibility, Layout) are provided by HA itself; the card's own
+section tabs have been replaced by rows. English is the default; German follows
+the HA language setting.
+
+See [example-widgets.yaml](example-widgets.yaml) for the new structure. Every
+widget requires a stable unique `id`, a `type`, and its own `config`. The list
+order controls the displayed order, including repeated widget types. Original
+legacy fields are retained for recovery; when `widgets` is present it is the
+authoritative configuration.
+
+The sections below describe the compatible legacy YAML interface.
+
 A configurable Lovelace dashboard card for 3D printers. It combines a printer view with a model overlay, switchable live camera, multi-filament display, print progress, freely selected information, metrics and printer controls.
 
-The card does not hardcode Anycubic or other manufacturer-specific entity names. All entities, images, labels and actions are configured in YAML.
+The card does not hardcode Anycubic or other manufacturer-specific entity names. Configure entities, images and labels in the visual editor, or use YAML for advanced actions and settings.
 
 <p align="center">
 <img width="20%" height="748" alt="Bildschirmfoto 2026-08-08 um 18 48 12" src="https://github.com/user-attachments/assets/ccec5c97-fc1a-4061-87d2-ea7bf9e13a9d" />
@@ -181,6 +242,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current build: **0.8.3**
+Current test build: **0.9.0-beta.6** (latest published base: **0.8.3**)
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.
