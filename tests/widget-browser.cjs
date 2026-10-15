@@ -177,6 +177,47 @@ const path = require("node:path");
   await card.locator('[data-entity-slider]').nth(1).evaluate((element) => commitSlider(element, 210));
   await page.waitForFunction(() => services.length === 3);
   assert.deepEqual(await page.evaluate(() => services[2]), ["input_number", "set_value", { entity_id: "input_number.temp", value: 210 }]);
+  // Regression: write-only number entities report unknown before their first
+  // command. A valid range (including mode: box) must still be controllable.
+  await page.evaluate(() => {
+    hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'] = { state: 'unknown', attributes: { min: 0, max: 120, step: 1, mode: 'box', unit_of_measurement: '°C', device_class: 'temperature', friendly_name: '3D Drucker Betttemperatur einstellen' } };
+  });
+  const entityInput = sliderItems.nth(2).locator('ha-selector').first().locator('input');
+  await entityInput.fill('number.buro_3d_drucker_betttemperatur_einstellen'); await entityInput.dispatchEvent('change');
+  const bedTile = card.locator('three-d-printer-value-slider').nth(2);
+  const bedControl = bedTile.locator('[data-entity-slider]');
+  assert.equal(await bedControl.evaluate((element) => element.shadowRoot ? element.shadowRoot.querySelector('input').disabled : element.disabled), false);
+  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), 'No current value');
+  // Use the keyboard on the actual input instead of injecting a service event.
+  const bedInput = process.env.WIDGET_SLIDER_FALLBACK ? bedControl : bedControl.locator('input');
+  await bedInput.focus(); await bedInput.press('End');
+  await page.waitForFunction(() => services.length === 4);
+  assert.deepEqual(await page.evaluate(() => services[3]), ['number', 'set_value', { entity_id: 'number.buro_3d_drucker_betttemperatur_einstellen', value: 120 }]);
+  const subtitle = sliderItems.nth(2).locator('input[data-path*=\'"subtitle"\']');
+  await subtitle.fill('Target: {value}'); await subtitle.dispatchEvent('change');
+  await page.evaluate(() => { hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = '120'; card.hass = hassMock; hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = '35'; card.hass = hassMock; });
+  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), 'Target: 35 °C');
+  await subtitle.fill('Bed heater'); await subtitle.dispatchEvent('change');
+  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), 'Bed heater');
+  await subtitle.fill(''); await subtitle.dispatchEvent('change');
+  assert.equal(await bedTile.locator('[data-slider-value]').isVisible(), false);
+  await subtitle.fill('{value}'); await subtitle.dispatchEvent('change');
+  // Zero is a valid live value, not an absent value. Out-of-range commands clamp.
+  await page.evaluate(() => { hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = '120'; card.hass = hassMock; hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = '0'; card.hass = hassMock; });
+  assert.equal(await bedTile.locator('[data-slider-value]').textContent(), '0 °C');
+  await bedControl.evaluate((element) => commitSlider(element, 150));
+  await page.waitForFunction(() => services.length === 5);
+  assert.equal(await page.evaluate(() => services[4][2].value), 120);
+  await page.evaluate(() => { hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = 'unavailable'; card.hass = hassMock; });
+  assert.equal(await bedControl.evaluate((element) => element.shadowRoot ? element.shadowRoot.querySelector('input').disabled : element.disabled), true);
+  await bedControl.evaluate((element) => commitSlider(element, 80));
+  assert.equal(await page.evaluate(() => services.length), 5);
+  await page.evaluate(() => { hassMock.states['number.buro_3d_drucker_betttemperatur_einstellen'].state = '120'; card.hass = hassMock; });
+  // Safari/native select and color inputs receive the same explicit box height.
+  const fieldHeights = await editor.evaluate((element) => ['input[type=text]', 'select', 'input[type=color]'].map((selector) => [...element.shadowRoot.querySelectorAll(selector)].map((field) => getComputedStyle(field).height)));
+  assert.ok(fieldHeights.flat().every((height) => height === '56px'), JSON.stringify(fieldHeights));
+  const rowColors = await editor.evaluate((element) => ({ row: getComputedStyle(element.shadowRoot.querySelector('details[data-widget-index]')).backgroundColor, item: getComputedStyle(element.shadowRoot.querySelector('.item')).backgroundColor }));
+  assert.notEqual(rowColors.row, rowColors.item);
   // Clear links remain visible and explicit blanks survive a reload.
   await editor.locator('details[data-widget-index]').last().locator('summary .row-title').click();
   const emptyClear = editor.locator('.clear:visible').first();

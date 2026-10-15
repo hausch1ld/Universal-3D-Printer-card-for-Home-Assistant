@@ -96,6 +96,7 @@ widgets:
     config:
       sliders:
         - label: Print speed
+          subtitle: "{value}"
           icon: mdi:speedometer
           entity: number.printer_speed
         - label: Nozzle

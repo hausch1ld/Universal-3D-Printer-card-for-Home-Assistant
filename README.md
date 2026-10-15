@@ -1,6 +1,6 @@
 # Universal 3D Printer Card for Home Assistant
 
-## Widget editor preview — 0.9.0-beta.3
+## Widget editor preview — 0.9.0-beta.4
 
 This local test build adds independent, reorderable widgets. It is not yet a
 published HACS release. Existing YAML configurations continue to load; the
@@ -24,6 +24,13 @@ visual editor writes the new structure after an edit is saved.
   fallback while it loads. Limits, step and unit follow each entity; service
   calls are sent on release, not for every intermediate movement. Existing
   single-slider configurations are converted automatically.
+- Number entities reporting `unknown` remain controllable so their first value
+  can be set. Missing/offline (`unavailable`) entities stay disabled. The
+  subtitle explains an absent value instead of silently showing a dash.
+- Each slider has an editable subtitle: `{value}` shows the live value, custom
+  text can include that placeholder, and an empty subtitle hides the line.
+- Editor rows have a contrasting, theme-aware background. Text fields, native
+  dropdowns and color pickers use a consistent height, including in Safari.
 
 The header remains in General settings. The surrounding Home Assistant tabs
 (Configuration, Visibility, Layout) are provided by HA itself; the card's own
@@ -219,6 +226,6 @@ Unconfigured sections and buttons are hidden. Missing, `unknown` and `unavailabl
 
 ## Version
 
-Current test build: **0.9.0-beta.3** (latest published base: **0.8.3**)
+Current test build: **0.9.0-beta.4** (latest published base: **0.8.3**)
 
 This card has been tested with [hass-anycubic](https://github.com/Nino6689/hass-anycubic) by [@Nino6689](https://github.com/Nino6689), but is designed to work with any integration that exposes suitable Home Assistant entities.

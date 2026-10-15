@@ -2,7 +2,7 @@
  * Dependency-free Web Component
  */
 
-const CARD_VERSION = "0.9.0-beta.3";
+const CARD_VERSION = "0.9.0-beta.4";
 
 // Migration is independent of hass and never writes back to the dashboard.
 // Both the renderer and editor consume this model.
@@ -15,7 +15,7 @@ function createWidgetConfig(source) {
       if (widget.type !== "slider" || Number(config.schema_version || 1) > 1) return;
       const settings = widget.config ||= {};
       if (!Array.isArray(settings.sliders)) {
-        settings.sliders = [Object.fromEntries(["entity", "label", "icon", "color"].filter((key) => Object.hasOwn(settings, key)).map((key) => [key, settings[key]]))];
+        settings.sliders = [Object.fromEntries(["entity", "label", "subtitle", "icon", "color"].filter((key) => Object.hasOwn(settings, key)).map((key) => [key, settings[key]]))];
       }
     });
     return config;
@@ -1021,13 +1021,13 @@ class ThreeDPrinterCardEditor extends HTMLElement {
 }
 
 Object.assign(TRANSLATIONS.en, {
-  add_slider: "Add slider", remove_slider: "Remove slider", slider_color: "Slider color",
+  add_slider: "Add slider", remove_slider: "Remove slider", slider_color: "Slider color", slider_subtitle: "Subtitle", slider_subtitle_hint: "Use {value} for the live value, or leave empty to hide the subtitle.", slider_unknown: "No current value",
   add_widget: "Add Widget", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Enabled", move_up: "Move up", move_down: "Move down", drag: "Drag to reorder", remove_widget: "Remove widget", duplicate: "Duplicate widget",
   show_filaments: "Show Filaments", show_controls: "Show Controls", use_effect: "Use effect", effect_entity: "Model progress entity (%)", effect_hint: "Reveals the model from bottom to top. Missing progress shows the full model.",
   slider: "Slider", slider_entity: "Controllable entity", slider_hint: "Select a number or input_number entity. Range and step follow its attributes.", format: "Value format", format_default: "Home Assistant default", format_time: "Duration (h:mm:ss)", format_end: "Date and time", secondary_info: "Second entity (optional)", separator: "Separator", start_view: "Start view", view_printer: "Printer / model", view_camera: "Live camera", style: "Button style", no_widgets: "No widgets yet. Add your first widget above.", unknown_widget: "Unsupported widget type", service_error: "Could not set the value. Please try again.", entity_unavailable: "Entity unavailable", editor_note: "Each widget fills one row. Expand to configure; drag the handle to reorder.", optional: "Optional", legacy_action: "Custom YAML action preserved. Selecting an entity replaces it.",
 });
 Object.assign(TRANSLATIONS.de, {
-  add_slider: "Slider hinzufügen", remove_slider: "Slider entfernen", slider_color: "Slider-Farbe",
+  add_slider: "Slider hinzufügen", remove_slider: "Slider entfernen", slider_color: "Slider-Farbe", slider_subtitle: "Untertitel", slider_subtitle_hint: "Mit {value} den aktuellen Wert anzeigen; leer lassen zum Ausblenden.", slider_unknown: "Noch kein aktueller Wert",
   add_widget: "Widget hinzufügen", widget: "Widget", buttons: "Buttons", infos: "Infos", enabled: "Aktiviert", move_up: "Nach oben", move_down: "Nach unten", drag: "Zum Sortieren ziehen", remove_widget: "Widget entfernen", duplicate: "Widget duplizieren",
   show_filaments: "Filamente anzeigen", show_controls: "Controls anzeigen", use_effect: "Effekt verwenden", effect_entity: "Modell-Fortschrittsentität (%)", effect_hint: "Deckt das Modell von unten nach oben auf. Ohne verfügbaren Fortschritt bleibt das Modell vollständig sichtbar.",
   slider: "Slider", slider_entity: "Steuerbare Entität", slider_hint: "Wähle eine number- oder input_number-Entität. Grenzen und Schrittweite werden aus der Entität übernommen.", format: "Wertformat", format_default: "Home-Assistant-Standard", format_time: "Dauer (h:mm:ss)", format_end: "Datum und Uhrzeit", secondary_info: "Zweite Entität (optional)", separator: "Trennzeichen", start_view: "Startansicht", view_printer: "Drucker / Modell", view_camera: "Live-Kamera", style: "Button-Stil", no_widgets: "Noch keine Widgets. Füge oben dein erstes Widget hinzu.", unknown_widget: "Unbekannter Widget-Typ", service_error: "Wert konnte nicht gesetzt werden. Bitte erneut versuchen.", entity_unavailable: "Entität nicht verfügbar", editor_note: "Jedes Widget belegt eine Reihe. Zum Konfigurieren aufklappen; am Griff die Reihenfolge ändern.", optional: "Optional", legacy_action: "Eigene YAML-Aktion erhalten. Die Auswahl einer Entität ersetzt sie.",
@@ -1230,7 +1230,7 @@ class ThreeDPrinterValueSlider extends ThreeDPrinterCard {
       if (raw == null || !Number.isFinite(Number(raw))) return;
       this._sliderDragging = true;
       const state = this._state(this._config.entity);
-      this.shadowRoot.querySelector("[data-slider-value]").textContent = `${Number(raw)} ${state?.attributes.unit_of_measurement || ""}`.trim();
+      this._setSubtitle(`${Number(raw)} ${state?.attributes.unit_of_measurement || ""}`.trim());
       this._paintSlider(Number(raw));
     };
     slider.addEventListener(native ? "slider-moved" : "input", (event) => preview(native ? event.detail?.value : slider.value));
@@ -1249,18 +1249,35 @@ class ThreeDPrinterValueSlider extends ThreeDPrinterCard {
     this.shadowRoot.querySelector(".fallback-track")?.style.setProperty("--ratio", ratio);
   }
 
+  _sliderState() {
+    const state = this._state(this._config.entity);
+    const min = Number(state?.attributes.min ?? 0), max = Number(state?.attributes.max ?? 100);
+    const step = Number(state?.attributes.step ?? 1);
+    // Write-only number entities may legitimately report "unknown" until set.
+    // They must remain controllable; "unavailable" still means offline.
+    const writable = ["number", "input_number"].includes(this._config.entity?.split(".")[0]) && Boolean(state) && state.state !== "unavailable" && Number.isFinite(min) && Number.isFinite(max) && max > min;
+    const value = state && !this._isMissing(state.state) && Number.isFinite(Number(state.state)) ? Number(state.state) : null;
+    return { state, min, max, step: Number.isFinite(step) && step > 0 ? step : 1, writable, value };
+  }
+
+  _setSubtitle(value) {
+    const field = this.shadowRoot.querySelector("[data-slider-value]");
+    const template = this._config.subtitle ?? "{value}";
+    field.textContent = String(template).replaceAll("{value}", value);
+    field.hidden = template === "";
+  }
+
   _refreshSlider() {
     const slider = this.shadowRoot.querySelector("[data-entity-slider]");
     if (!slider) return;
-    const c = this._config, state = this._state(c.entity);
-    const valid = ["number", "input_number"].includes(c.entity?.split(".")[0]);
-    const unavailable = !valid || !state || this._isMissing(state.state) || !Number.isFinite(Number(state.state));
-    if (this._sliderRequested != null && Number(state?.state) === this._sliderRequested) this._sliderRequested = null;
+    const c = this._config, { state, min, max, step, writable, value } = this._sliderState();
+    const unavailable = !writable;
+    if (this._sliderRequested != null && value === this._sliderRequested) this._sliderRequested = null;
     slider.disabled = unavailable || this._sliderPending === true;
-    slider.min = Number(state?.attributes.min ?? 0);
-    slider.max = Number(state?.attributes.max ?? 100);
-    slider.step = Number(state?.attributes.step ?? 1);
-    if (!this._sliderDragging && !this._sliderPending) slider.value = unavailable ? slider.min : this._sliderRequested ?? Number(state.state);
+    slider.min = min;
+    slider.max = max;
+    slider.step = step;
+    if (!this._sliderDragging && !this._sliderPending) slider.value = this._sliderRequested ?? value ?? min;
     slider.showHandle = true;
     slider.locale = this._hass?.locale;
     slider.unit = state?.attributes.unit_of_measurement;
@@ -1272,15 +1289,14 @@ class ThreeDPrinterValueSlider extends ThreeDPrinterCard {
     const icon = this.shadowRoot.querySelector("[data-slider-icon]");
     icon.setAttribute("icon", c.icon ?? state?.attributes.icon ?? "mdi:tune");
     this.shadowRoot.querySelector("[data-slider-icon-wrap]").hidden = c.icon === "";
-    if (!this._sliderDragging && !this._sliderPending) this.shadowRoot.querySelector("[data-slider-value]").textContent = unavailable ? "—" : this._sliderRequested != null ? `${this._sliderRequested} ${state.attributes.unit_of_measurement || ""}`.trim() : (this._hass?.formatEntityState?.(state) ?? state.state);
+    if (!this._sliderDragging && !this._sliderPending) this._setSubtitle(unavailable ? this._t("entity_unavailable") : this._sliderRequested != null ? `${this._sliderRequested} ${state.attributes.unit_of_measurement || ""}`.trim() : value == null ? this._t("slider_unknown") : (this._hass?.formatEntityState?.(state) ?? state.state));
     if (!this._sliderDragging) this._paintSlider(Number(slider.value));
   }
 
   async _setSliderValue(raw) {
     this._sliderDragging = false;
-    const c = this._config, state = this._state(c.entity);
-    if (this._sliderPending || !state || this._isMissing(state.state) || !["number", "input_number"].includes(c.entity?.split(".")[0]) || !Number.isFinite(Number(raw))) return;
-    const min = Number(state.attributes.min ?? 0), max = Number(state.attributes.max ?? 100), step = Number(state.attributes.step ?? 1);
+    const c = this._config, { min, max, step, writable } = this._sliderState();
+    if (this._sliderPending || !writable || raw == null || raw === "" || !Number.isFinite(Number(raw))) return;
     const value = Number(Math.min(max, Math.max(min, min + Math.round((Number(raw) - min) / (step > 0 ? step : 1)) * (step > 0 ? step : 1))).toFixed(8));
     const error = this.shadowRoot.querySelector("[data-slider-error]");
     error.hidden = true;
@@ -1366,12 +1382,13 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
 
   _list(path, kind, limit) {
     const items = this._get(path, []);
-    const title = kind === "spool" ? this._t("spool") : kind === "info" ? this._t("info") : kind === "slider" ? this._t("slider") : this._t("small_button");
+    const title = kind === "spool" ? this._t("spool") : kind === "info" ? this._t("info") : kind === "slider" ? this._t("slider") : kind === "large" ? this._t("large_button") : this._t("small_button");
     return `<div class="list">${items.map((item, index) => {
       const p = [...path, index];
       let fields = this._input(this._t("label"), [...p, "label"]);
       if (kind === "spool") fields += this._selector(this._t("spool_entity"), [...p, "entity"], { entity: {} }) + this._imageField(this._t("static_spool_image"), [...p, "image"]);
       else if (kind === "slider") {
+        fields += `<label><span>${this._t("slider_subtitle")}</span><input type="text" data-path="${this._path([...p, "subtitle"])}" value="${this._escape(item.subtitle ?? "{value}")}"><small class="hint">${this._t("slider_subtitle_hint")}</small></label>`;
         fields += this._selector(this._t("slider_entity"), [...p, "entity"], { entity: { domain: ["number", "input_number"] } }) + this._selector(this._t("icon"), [...p, "icon"], { icon: {} }) + this._colorField(this._t("slider_color"), [...p, "color"]);
       } else {
         fields += this._selector(this._t("icon"), [...p, "icon"], { icon: {} });
@@ -1407,6 +1424,14 @@ class ThreeDPrinterWidgetEditor extends ThreeDPrinterCardEditor {
     const toolbar = (command, icon, title, extra = "") => `<button type="button" class="icon-button" data-command="${command}" title="${this._escape(title)}" aria-label="${this._escape(title)}" ${extra}><ha-icon icon="${icon}"></ha-icon></button>`;
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;max-width:100%;color:var(--primary-text-color);font-family:inherit;container-type:inline-size}*{box-sizing:border-box;min-width:0}.editor{display:grid;gap:12px;padding:4px 0 16px}details{border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);overflow:clip}summary{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 10px;cursor:pointer;list-style:none;font-weight:600}summary::-webkit-details-marker{display:none}summary::after{content:'⌄';margin-left:2px;color:var(--secondary-text-color)}details[open]>summary::after{transform:rotate(180deg)}.row-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-body{padding:0 12px 14px}.tools{display:flex;gap:0}.icon-button{display:grid;place-items:center;width:32px;height:36px;min-width:32px;padding:0;color:var(--secondary-text-color);background:none;border:0;border-radius:6px;cursor:pointer}.icon-button:disabled{opacity:.25;cursor:default}.icon-button:hover{background:var(--secondary-background-color)}ha-icon{width:20px;height:20px}.drag-handle{touch-action:none;cursor:grab}.drag-target{outline:2px solid var(--primary-color);outline-offset:2px}.dragging{opacity:.5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.selector,label:not(.toggle),.image-field{display:grid;gap:6px;max-width:100%;min-width:0;align-content:start}label>span,.field-heading{font-size:12px;color:var(--secondary-text-color)}.field-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.clear{color:var(--primary-color);background:none;border:0;font:inherit;font-size:11px;padding:0;cursor:pointer}input,select{width:100%;min-height:42px;border:1px solid var(--divider-color);border-radius:8px;padding:8px 10px;background:transparent;color:var(--primary-text-color);font:inherit}input[type=range]{padding:0;border:0}input[type=checkbox]{width:20px;min-height:20px;flex:0 0 20px}.toggle{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0}.toggle>span{font-size:14px;color:var(--primary-text-color)}.enabled-toggle{width:20px;margin:0;cursor:pointer}ha-selector{display:block;width:100%;max-width:100%;overflow:hidden}.image-field{grid-column:1/-1;border:1px solid var(--divider-color);border-radius:8px;padding:8px}.item{border:1px solid var(--divider-color);border-radius:10px;padding:10px;margin-top:12px}.item-head{display:flex;align-items:center;justify-content:space-between}.embedded{border-top:1px solid var(--divider-color);margin-top:16px;padding-top:8px}.hint{font-size:12px;line-height:1.5;color:var(--secondary-text-color);margin:8px 0}.add{display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:10px 14px;min-height:44px;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);cursor:pointer;margin-top:12px}.add-widget{width:100%;background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:600;font-size:15px;margin:0}.widget-menu{display:grid;grid-template-columns:1fr 1fr;gap:8px}.widget-menu button{margin:0}.range output{font-weight:600}.off>.row-title{opacity:.5}@container(max-width:560px){.grid{grid-template-columns:1fr}.tools .duplicate-tool{display:none}summary{gap:4px;padding:8px 6px}.icon-button{width:28px;min-width:28px}}:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+      /* Native Safari menus ignore height until native menu appearance is removed. */
+      input:not([type=checkbox]):not([type=range]),select{height:56px;min-height:56px;line-height:normal}
+      select{appearance:none;-webkit-appearance:none;padding-right:32px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='m2 2 4 4 4-4' fill='none' stroke='%23888' stroke-width='2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:12px 8px}
+      input[type=color]{appearance:none;-webkit-appearance:none;padding:10px;cursor:pointer}
+      input[type=color]::-webkit-color-swatch-wrapper{padding:0}input[type=color]::-webkit-color-swatch{border:0;border-radius:4px}input[type=color]::-moz-color-swatch{border:0;border-radius:4px}
+      ha-selector{min-height:56px}input[type=checkbox]{height:20px}
+      details[data-widget-index]{background:color-mix(in srgb,var(--primary-background-color,color-mix(in srgb,var(--card-background-color) 90%,var(--primary-text-color))) 65%,var(--card-background-color));border-color:var(--divider-color)}
+      .item{background:var(--card-background-color)}
     </style><div class="editor"><details data-open-key="general" ${this._openRows.has("general") ? "open" : ""}><summary>${this._t("general")}</summary><div class="row-body">${this._toggle("header", this._t("header"))}<div class="grid">${this._input(this._t("title"), ["name"])}${this._input(this._t("subtitle"), ["subtitle"])}${this._selector(this._t("status_entity"), ["status_entity"], { entity: {} })}</div></div></details>
     <button type="button" class="add add-widget" data-command="widget-menu"><ha-icon icon="mdi:plus"></ha-icon>${this._t("add_widget")}</button>${this._menuOpen ? `<div class="widget-menu">${WIDGET_TYPES.map((type) => `<button type="button" class="add" data-command="add-widget" data-type="${type}">${this._t(WIDGET_LABELS[type])}</button>`).join("")}</div>` : ""}<p class="hint">${this._t("editor_note")}</p>
     ${this._config.widgets.map((widget, index) => `<details data-widget-index="${index}" data-open-key="${this._escape(widget.id)}" ${this._openRows.has(widget.id) ? "open" : ""}><summary class="${widget.enabled === false ? "off" : ""}">${toolbar("drag", "mdi:drag", this._t("drag"), 'class="drag-handle"')}<span class="row-title">${index + 1}. ${this._escape(this._t(WIDGET_LABELS[widget.type] || "widget"))}${widget.type === "buttons" && widget.config?.style === "large" ? ` · ${this._t("large_tab")}` : ""}</span><input class="enabled-toggle" type="checkbox" aria-label="${this._t("enabled")}" data-path="${this._path(["widgets", index, "enabled"])}" ${widget.enabled !== false ? "checked" : ""}><span class="tools">${toolbar("up", "mdi:arrow-up", this._t("move_up"), index === 0 ? "disabled" : "")}${toolbar("down", "mdi:arrow-down", this._t("move_down"), index === this._config.widgets.length - 1 ? "disabled" : "")}${toolbar("duplicate", "mdi:content-copy", this._t("duplicate"))}${toolbar("remove-widget", "mdi:delete-outline", this._t("remove_widget"))}</span></summary><div class="row-body">${this._widgetFields(widget, index)}</div></details>`).join("") || `<p class="hint">${this._t("no_widgets")}</p>`}</div>`;
