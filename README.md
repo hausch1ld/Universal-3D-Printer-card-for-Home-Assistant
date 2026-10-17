@@ -5,8 +5,9 @@
   <img width="22%" alt="3D printer dashboard example 4" src="https://github.com/user-attachments/assets/76840c14-372c-4347-a30e-8f887504ef82" />
   <img width="50" height="1228" alt="image" src="https://github.com/user-attachments/assets/55ed1764-2242-469d-9d5d-74f21c2aed1d" />
 </p>
+
 <p align="center">
- <img width="50" height="1228" alt="image" src="https://github.com/user-attachments/assets/55ed1764-2242-469d-9d5d-74f21c2aed1d" />
+ <img width="50" alt="3D printer dashboard example 5" src="https://github.com/user-attachments/assets/55ed1764-2242-469d-9d5d-74f21c2aed1d" />
 </p>
 
 **Universal 3D Printer Card for Home Assistant** brings your printer, live camera, filament spools, print progress and controls into one customizable dashboard card. Build your layout in the visual editor using independent, reorderable widgets. The card works with any integration that provides suitable entities; no manufacturer-specific entity names are hardcoded.
